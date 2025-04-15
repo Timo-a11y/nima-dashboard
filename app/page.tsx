@@ -7,7 +7,10 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-black text-white p-6 font-sans">
       <header className="flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-gray-400 text-sm mt-1">Hi Timo! 👋</p>
+        </div>
         <nav className="space-x-6">
           <a href="#" className="text-gray-400 hover:text-white">Home</a>
           <a href="#" className="text-gray-400 hover:text-white">Analytics</a>
@@ -41,9 +44,9 @@ export default function Dashboard() {
         <section className="bg-zinc-900 p-4 rounded-xl shadow">
           <h2 className="text-lg font-semibold mb-4">Community Feed</h2>
           <ul className="space-y-2 text-sm text-zinc-300">
-            <li>Reddit: New AI tool is incredible</li>
-            <li>Discord: Looking forward to it!</li>
-            <li>Reddit: What’s your go-to workout?</li>
+            <li><a href="https://www.reddit.com/r/technology" className="hover:underline text-white">Reddit: New AI tool is incredible</a></li>
+            <li><a href="https://discord.com" className="hover:underline text-white">Discord: Looking forward to it!</a></li>
+            <li><a href="https://www.reddit.com/r/fitness" className="hover:underline text-white">Reddit: What’s your go-to workout?</a></li>
           </ul>
         </section>
 
@@ -61,9 +64,9 @@ export default function Dashboard() {
         <section className="bg-zinc-900 p-4 rounded-xl shadow">
           <h2 className="text-lg font-semibold mb-4">Entertainment & Music</h2>
           <ul className="space-y-2 text-sm text-zinc-300">
-            <li>🎧 Sordon recommends: Waner headphones</li>
-            <li>📰 Major breakthrough in tech today</li>
-            <li>📸 Trending photo: Epic Skate Tricks</li>
+            <li><a href="https://www.theverge.com/tech" className="hover:underline text-white">🎧 Sordon recommends: Waner headphones</a></li>
+            <li><a href="https://www.wired.com" className="hover:underline text-white">📰 Major breakthrough in tech today</a></li>
+            <li><a href="https://unsplash.com/s/photos/trending" className="hover:underline text-white">📸 Trending photo: Epic Skate Tricks</a></li>
           </ul>
         </section>
 
