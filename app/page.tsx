@@ -1,79 +1,81 @@
+// app/page.tsx
+'use client';
+
 import { useEffect, useState } from 'react';
 
-export default function Home() {
-  const [posts, setPosts] = useState<any[]>([]);
-  const [recommendation, setRecommendation] = useState<string>(''); // AI output
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    fetch('https://www.reddit.com/r/popular.json')
-      .then((res) => res.json())
-      .then((data) => {
-        const items = data.data.children.slice(0, 5);
-        setPosts(items);
-      });
-  }, []);
-
-  // AI call functie
-  const generateRecommendation = async () => {
-    setLoading(true);
-    const res = await fetch('/api/ai-recommendation');
-    const data = await res.json();
-    setRecommendation(data.result);
-    setLoading(false);
-  };
-
+export default function Dashboard() {
   return (
-    <main className="min-h-screen bg-black text-white p-6">
-      <h1 className="text-3xl font-bold mb-6">👋 Welcome to Timo</h1>
+    <main className="min-h-screen bg-black text-white p-6 font-sans">
+      <header className="flex justify-between items-center mb-8">
+        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <nav className="space-x-6">
+          <a href="#" className="text-gray-400 hover:text-white">Home</a>
+          <a href="#" className="text-gray-400 hover:text-white">Analytics</a>
+          <a href="#" className="text-gray-400 hover:text-white">Settings</a>
+        </nav>
+      </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* 📬 Mail Widget */}
-        <div className="bg-zinc-900 p-4 rounded-xl shadow-md">
-          <h2 className="text-xl font-semibold mb-2">📬 Mail</h2>
-          <p className="text-zinc-300">Your latest emails will appear here.</p>
-        </div>
-
-        {/* 🎵 Music Widget */}
-        <div className="bg-zinc-900 p-4 rounded-xl shadow-md">
-          <h2 className="text-xl font-semibold mb-2">🎵 Music</h2>
-          <p className="text-zinc-300">Your Spotify favorites and stats.</p>
-        </div>
-
-        {/* 💬 Reddit Widget */}
-        <div className="bg-zinc-900 p-4 rounded-xl shadow-md">
-          <h2 className="text-xl font-semibold mb-2">💬 Reddit</h2>
-          <ul className="space-y-2">
-            {posts.map((post, i) => (
-              <li key={i} className="text-sm text-zinc-300">
-                <a
-                  href={`https://reddit.com${post.data.permalink}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:underline text-white"
-                >
-                  🔗 {post.data.title}
-                </a>
-              </li>
-            ))}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Unified Inbox */}
+        <section className="bg-zinc-900 p-4 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Unified Inbox</h2>
+          <ul className="space-y-2 text-sm text-zinc-300">
+            <li>📧 John Doe — Reschedule to Friday</li>
+            <li>📨 Outlook — Weekly Newsletter</li>
+            <li>💬 @user122 — Thanks for the info!</li>
+            <li>👤 Alice — You should see this</li>
           </ul>
-        </div>
+        </section>
 
-        {/* 📰 AI Recommendations Widget */}
-        <div className="bg-zinc-900 p-4 rounded-xl shadow-md">
-          <h2 className="text-xl font-semibold mb-2">📰 Recommendations (AI)</h2>
-          <button
-            onClick={generateRecommendation}
-            className="mb-4 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition"
-            disabled={loading}
-          >
-            {loading ? 'Thinking...' : 'Generate recommendation'}
-          </button>
-
-          <div className="text-zinc-300 text-sm whitespace-pre-line">
-            {recommendation || 'Click the button to get an AI suggestion.'}
+        {/* Social Wall */}
+        <section className="bg-zinc-900 p-4 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Social Wall</h2>
+          <div className="space-y-2 text-sm text-zinc-300">
+            <div>@gamer42 — Just finished a new post</div>
+            <div>📷 Epic sunset photo from coast</div>
+            <div>🎧 Music drop preview from artist</div>
           </div>
-        </div>
+        </section>
+
+        {/* Community Feed */}
+        <section className="bg-zinc-900 p-4 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Community Feed</h2>
+          <ul className="space-y-2 text-sm text-zinc-300">
+            <li>Reddit: New AI tool is incredible</li>
+            <li>Discord: Looking forward to it!</li>
+            <li>Reddit: What’s your go-to workout?</li>
+          </ul>
+        </section>
+
+        {/* Liked Songs */}
+        <section className="bg-zinc-900 p-4 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Liked Songs</h2>
+          <ul className="space-y-2 text-sm text-zinc-300">
+            <li>🎵 Song One</li>
+            <li>🎵 Track Two</li>
+            <li>🎵 Artist Three</li>
+          </ul>
+        </section>
+
+        {/* Entertainment & Music */}
+        <section className="bg-zinc-900 p-4 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Entertainment & Music</h2>
+          <ul className="space-y-2 text-sm text-zinc-300">
+            <li>🎧 Sordon recommends: Waner headphones</li>
+            <li>📰 Major breakthrough in tech today</li>
+            <li>📸 Trending photo: Epic Skate Tricks</li>
+          </ul>
+        </section>
+
+        {/* Recommendations */}
+        <section className="bg-zinc-900 p-4 rounded-xl shadow">
+          <h2 className="text-lg font-semibold mb-4">Recommendations</h2>
+          <div className="text-sm text-zinc-300 mb-2">🎁 Gift unlocked!</div>
+          <div className="w-full bg-zinc-700 h-2 rounded">
+            <div className="bg-red-500 h-2 rounded" style={{ width: '65%' }}></div>
+          </div>
+          <div className="mt-2 text-sm text-zinc-300">⭐ Rewards: 150 / 200 pts</div>
+        </section>
       </div>
     </main>
   );
