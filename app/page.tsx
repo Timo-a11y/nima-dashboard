@@ -4,6 +4,17 @@
 import { useEffect, useState } from 'react';
 
 export default function Dashboard() {
+  const [recommendation, setRecommendation] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const generateRecommendation = async () => {
+    setLoading(true);
+    const res = await fetch('/api/ai-recommendation');
+    const data = await res.json();
+    setRecommendation(data.result);
+    setLoading(false);
+  };
+
   return (
     <main className="min-h-screen bg-black text-white p-6 font-sans">
       <header className="flex justify-between items-center mb-8">
@@ -70,9 +81,22 @@ export default function Dashboard() {
           </ul>
         </section>
 
-        {/* Recommendations */}
+        {/* Recommendations with AI */}
         <section className="bg-zinc-900 p-4 rounded-xl shadow">
           <h2 className="text-lg font-semibold mb-4">Recommendations</h2>
+
+          <button
+            onClick={generateRecommendation}
+            className="mb-4 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-md transition"
+            disabled={loading}
+          >
+            {loading ? 'Thinking...' : 'Generate recommendation'}
+          </button>
+
+          <div className="text-sm text-zinc-300 whitespace-pre-line mb-4">
+            {recommendation || 'Click the button to get an AI suggestion.'}
+          </div>
+
           <div className="text-sm text-zinc-300 mb-2">🎁 Gift unlocked!</div>
           <div className="w-full bg-zinc-700 h-2 rounded">
             <div className="bg-red-500 h-2 rounded" style={{ width: '65%' }}></div>
