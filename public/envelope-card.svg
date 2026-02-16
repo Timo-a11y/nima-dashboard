@@ -1,14 +1,38 @@
 <svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="1400" height="900" fill="#E2E8F0"/>
+<defs>
+<linearGradient id="bg" x1="700" y1="0" x2="700" y2="900" gradientUnits="userSpaceOnUse">
+<stop stop-color="#E9EEF6"/>
+<stop offset="1" stop-color="#DDE5F2"/>
+</linearGradient>
+<linearGradient id="photo" x1="700" y1="220" x2="700" y2="720" gradientUnits="userSpaceOnUse">
+<stop stop-color="#EFC3A7"/>
+<stop offset="1" stop-color="#CF9B82"/>
+</linearGradient>
+<linearGradient id="bra" x1="700" y1="470" x2="700" y2="740" gradientUnits="userSpaceOnUse">
+<stop stop-color="#212B44"/>
+<stop offset="1" stop-color="#111827"/>
+</linearGradient>
+</defs>
+
+<rect width="1400" height="900" fill="url(#bg)"/>
 <rect x="70" y="70" width="1260" height="760" rx="64" fill="#CBD5E1"/>
-<rect x="210" y="210" width="980" height="480" rx="44" fill="#94A3B8"/>
-<path d="M210 248C210 226.908 227.908 209 249 209H1151C1172.09 209 1190 226.908 1190 248V688H210V248Z" fill="#64748B"/>
-<ellipse cx="560" cy="510" rx="122" ry="114" fill="#D8A08A" fill-opacity="0.86"/>
-<ellipse cx="840" cy="510" rx="122" ry="114" fill="#D8A08A" fill-opacity="0.86"/>
-<circle cx="560" cy="510" r="20" fill="#B77761" fill-opacity="0.85"/>
-<circle cx="840" cy="510" r="20" fill="#B77761" fill-opacity="0.85"/>
-<path d="M700 520L210 248H1190L700 520Z" fill="#475569"/>
-<path d="M210 688L521 430L700 520L879 430L1190 688H210Z" fill="#334155"/>
-<circle cx="1140" cy="290" r="54" fill="#1E293B"/>
-<circle cx="1140" cy="290" r="28" fill="#0F172A"/>
+<rect x="185" y="170" width="1030" height="560" rx="42" fill="#8FA1BA"/>
+
+<!-- photo area -->
+<rect x="220" y="205" width="960" height="490" rx="36" fill="url(#photo)"/>
+<ellipse cx="520" cy="510" rx="175" ry="150" fill="#E4AE94"/>
+<ellipse cx="880" cy="510" rx="175" ry="150" fill="#E4AE94"/>
+<path d="M700 402C662 432 640 474 640 546C640 604 662 646 700 676C738 646 760 604 760 546C760 474 738 432 700 402Z" fill="#D2977F"/>
+<path d="M315 690C360 560 470 490 570 490C647 490 684 542 700 568C716 542 753 490 830 490C930 490 1040 560 1085 690H315Z" fill="url(#bra)"/>
+<path d="M430 360C390 388 362 430 350 468" stroke="#253251" stroke-width="26" stroke-linecap="round"/>
+<path d="M970 360C1010 388 1038 430 1050 468" stroke="#253251" stroke-width="26" stroke-linecap="round"/>
+<path d="M595 532C622 502 658 488 700 488C742 488 778 502 805 532" stroke="#3C4B73" stroke-width="24" stroke-linecap="round"/>
+
+<!-- envelope overlay to keep postcard concept -->
+<path d="M220 248C220 223.699 239.699 204 264 204H1136C1160.3 204 1180 223.699 1180 248V694H220V248Z" fill="#5E6E88" fill-opacity="0.28"/>
+<path d="M700 520L220 248H1180L700 520Z" fill="#475569" fill-opacity="0.7"/>
+<path d="M220 694L520 438L700 520L880 438L1180 694H220Z" fill="#334155" fill-opacity="0.7"/>
+
+<circle cx="1136" cy="286" r="54" fill="#1E293B"/>
+<circle cx="1136" cy="286" r="28" fill="#0F172A"/>
 </svg>
