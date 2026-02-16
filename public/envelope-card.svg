@@ -4,13 +4,13 @@
 <stop stop-color="#E9EEF6"/>
 <stop offset="1" stop-color="#DDE5F2"/>
 </linearGradient>
-<linearGradient id="photo" x1="700" y1="220" x2="700" y2="720" gradientUnits="userSpaceOnUse">
-<stop stop-color="#EFC3A7"/>
-<stop offset="1" stop-color="#CF9B82"/>
+<linearGradient id="photo" x1="700" y1="210" x2="700" y2="700" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F3C8AE"/>
+<stop offset="1" stop-color="#D6A086"/>
 </linearGradient>
-<linearGradient id="bra" x1="700" y1="470" x2="700" y2="740" gradientUnits="userSpaceOnUse">
-<stop stop-color="#212B44"/>
-<stop offset="1" stop-color="#111827"/>
+<linearGradient id="bra" x1="700" y1="500" x2="700" y2="745" gradientUnits="userSpaceOnUse">
+<stop stop-color="#2C3554"/>
+<stop offset="1" stop-color="#131B2E"/>
 </linearGradient>
 </defs>
 
@@ -20,18 +20,22 @@
 
 <!-- photo area -->
 <rect x="220" y="205" width="960" height="490" rx="36" fill="url(#photo)"/>
-<ellipse cx="520" cy="510" rx="175" ry="150" fill="#E4AE94"/>
-<ellipse cx="880" cy="510" rx="175" ry="150" fill="#E4AE94"/>
-<path d="M700 402C662 432 640 474 640 546C640 604 662 646 700 676C738 646 760 604 760 546C760 474 738 432 700 402Z" fill="#D2977F"/>
-<path d="M315 690C360 560 470 490 570 490C647 490 684 542 700 568C716 542 753 490 830 490C930 490 1040 560 1085 690H315Z" fill="url(#bra)"/>
-<path d="M430 360C390 388 362 430 350 468" stroke="#253251" stroke-width="26" stroke-linecap="round"/>
-<path d="M970 360C1010 388 1038 430 1050 468" stroke="#253251" stroke-width="26" stroke-linecap="round"/>
-<path d="M595 532C622 502 658 488 700 488C742 488 778 502 805 532" stroke="#3C4B73" stroke-width="24" stroke-linecap="round"/>
+<ellipse cx="500" cy="520" rx="205" ry="178" fill="#E9B59A"/>
+<ellipse cx="900" cy="520" rx="205" ry="178" fill="#E9B59A"/>
+<ellipse cx="500" cy="468" rx="126" ry="86" fill="#F5CFB8" fill-opacity="0.74"/>
+<ellipse cx="900" cy="468" rx="126" ry="86" fill="#F5CFB8" fill-opacity="0.74"/>
+<path d="M700 380C638 430 605 486 605 565C605 646 639 700 700 734C761 700 795 646 795 565C795 486 762 430 700 380Z" fill="#C98971" fill-opacity="0.9"/>
+<path d="M255 695C328 562 452 484 578 484C655 484 688 545 700 570C712 545 745 484 822 484C948 484 1072 562 1145 695H255Z" fill="url(#bra)"/>
+<path d="M338 700C382 594 464 538 546 538C615 538 665 572 700 615C735 572 785 538 854 538C936 538 1018 594 1062 700" stroke="#3A476C" stroke-width="18" stroke-linecap="round"/>
+<path d="M360 372C323 402 295 445 281 486" stroke="#2D3A5D" stroke-width="28" stroke-linecap="round"/>
+<path d="M1040 372C1077 402 1105 445 1119 486" stroke="#2D3A5D" stroke-width="28" stroke-linecap="round"/>
+<path d="M620 540C646 514 675 502 700 502C725 502 754 514 780 540" stroke="#50618E" stroke-width="22" stroke-linecap="round"/>
 
 <!-- envelope overlay to keep postcard concept -->
-<path d="M220 248C220 223.699 239.699 204 264 204H1136C1160.3 204 1180 223.699 1180 248V694H220V248Z" fill="#5E6E88" fill-opacity="0.28"/>
-<path d="M700 520L220 248H1180L700 520Z" fill="#475569" fill-opacity="0.7"/>
-<path d="M220 694L520 438L700 520L880 438L1180 694H220Z" fill="#334155" fill-opacity="0.7"/>
+<path d="M220 248C220 223.699 239.699 204 264 204H1136C1160.3 204 1180 223.699 1180 248V694H220V248Z" fill="#5E6E88" fill-opacity="0.17"/>
+<path d="M700 520L220 248H1180L700 520Z" fill="#4A5D7A" fill-opacity="0.4"/>
+<path d="M220 694L520 438L700 520L880 438L1180 694H220Z" fill="#334155" fill-opacity="0.46"/>
+<path d="M220 248L700 520L1180 248" stroke="#D9E0EC" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-opacity="0.65"/>
 
 <circle cx="1136" cy="286" r="54" fill="#1E293B"/>
 <circle cx="1136" cy="286" r="28" fill="#0F172A"/>
