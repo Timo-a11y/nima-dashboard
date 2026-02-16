@@ -51,7 +51,7 @@ export default function Onepager() {
               alt="Vage vorm van een envelop"
               width={1400}
               height={900}
-              className="h-full w-full scale-110 object-cover blur-[2px]"
+              className="h-full w-full scale-125 object-cover blur-sm"
             />
           </div>
         </div>
