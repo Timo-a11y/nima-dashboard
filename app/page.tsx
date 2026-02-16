@@ -42,33 +42,33 @@ export default function Onepager() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-16 text-slate-900">
-      <section className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-3xl flex-col items-center justify-center text-center">
-        <div className="w-full max-w-[560px] rounded-3xl bg-white p-5 shadow-[0_40px_90px_-35px_rgba(15,23,42,0.55)]">
+    <main className="h-dvh overflow-hidden bg-slate-50 px-5 py-6 text-slate-900 sm:px-6 sm:py-8">
+      <section className="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
+        <div className="w-full max-w-[520px] rounded-3xl bg-white p-4 shadow-[0_40px_90px_-35px_rgba(15,23,42,0.55)] sm:p-5">
           <div className="aspect-[3/2] overflow-hidden rounded-2xl border border-slate-100 bg-slate-100">
             <Image
               src="/envelope-card.svg"
               alt="Vage vorm van een envelop"
               width={1400}
               height={900}
-              className="h-full w-full scale-110 object-cover blur-2xl"
+              className="h-full w-full scale-110 object-cover blur-lg"
             />
           </div>
         </div>
 
-        <p className="mt-10 text-xs font-semibold uppercase tracking-[0.28em] text-gray-500">
+        <p className="mt-6 text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-500 sm:text-xs">
           Only voor de echte Fans
         </p>
 
-        <h1 className="mt-3 max-w-2xl text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">
+        <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
           Elke maand: Twee Tieten in een envelop
         </h1>
 
-        <p className="mt-5 text-lg text-slate-600">Voor maar 5 euro per maand.</p>
+        <p className="mt-3 text-base text-slate-600 sm:text-lg">Voor maar 5 euro per maand.</p>
 
         <button
           onClick={openModal}
-          className="mt-10 rounded-full bg-black px-9 py-4 text-base font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-[0_16px_35px_-16px_rgba(15,23,42,0.7)]"
+          className="mt-6 rounded-full bg-black px-8 py-3.5 text-sm font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-[0_16px_35px_-16px_rgba(15,23,42,0.7)] sm:px-9 sm:py-4 sm:text-base"
         >
           Meld je nu aan
         </button>
