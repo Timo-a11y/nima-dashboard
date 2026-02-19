@@ -1,36 +1,67 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Google Drive Desktop (macOS MVP)
 
-## Getting Started
+Deze repository bevat nu een **Electron + Next.js desktop-app** die zich gedraagt als een basisversie van Google Drive Desktop:
 
-First, run the development server:
+- Inloggen met Google OAuth
+- Lokale sync-map kiezen
+- Lijst lokale bestanden en Drive-bestanden
+- Handmatige upload/download per bestand
+- Bidirectionele "Sync now" actie
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+## 1) Voorbereiding Google OAuth
+
+Maak in Google Cloud Console een OAuth client aan (type: **Web application** werkt het makkelijkst voor deze MVP):
+
+1. Zet **Google Drive API** aan.
+2. Maak OAuth credentials aan (Client ID + Client Secret).
+3. Voeg deze redirect URI toe:
+
+```txt
+http://127.0.0.1:53682/oauth2callback
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+De app vraagt in de UI om Client ID en Client Secret.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 2) Installeren
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm install
+```
 
-## Learn More
+## 3) Desktop development starten
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run dev:desktop
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Dit start:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Next.js renderer op `http://localhost:3000`
+- Electron desktop window
 
-## Deploy on Vercel
+## 4) Werken met de app
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. Vul OAuth Client ID en Client Secret in en klik **OAuth opslaan**
+2. Klik **Verbinden met Google**
+3. Kies een lokale sync-map
+4. Klik **Nu synchroniseren** of gebruik upload/download per bestand
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+De app maakt in je Drive een dedicated map:
+
+```txt
+Cursor Google Drive Desktop Sync
+```
+
+## 5) macOS build
+
+```bash
+npm run dist:mac
+```
+
+De artifacts komen in `release/`.
+
+## Bekende MVP-beperkingen
+
+- Sync is handmatig (geen achtergrond daemon of realtime file watcher)
+- Gericht op reguliere bestanden (geen Google Docs native documenttypes)
+- Nog geen conflict-resolutie UI behalve timestamp-vergelijking

@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "outDir": "electron-dist",
+    "types": ["node", "electron"]
+  },
+  "include": ["electron/**/*.ts", "lib/desktop-types.ts"]
+}
