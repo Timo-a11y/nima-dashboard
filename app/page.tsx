@@ -132,11 +132,12 @@ export default function DriveDesktopPage() {
   }, [state]);
 
   const handleSaveOauthConfig = async (): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("OAuth opslaan", async () => {
-      const authState = await window.desktopAPI.setOauthConfig(oauthConfig);
+      const authState = await desktopAPI.setOauthConfig(oauthConfig);
       setState((previous) => ({
         auth: authState,
         syncFolder: previous?.syncFolder ?? null,
@@ -147,21 +148,23 @@ export default function DriveDesktopPage() {
   };
 
   const handleConnectGoogle = async (): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Google verbinden", async () => {
-      await window.desktopAPI.connectGoogle();
+      await desktopAPI.connectGoogle();
       await refreshAll();
     });
   };
 
   const handleDisconnectGoogle = async (): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Google ontkoppelen", async () => {
-      await window.desktopAPI.disconnectGoogle();
+      await desktopAPI.disconnectGoogle();
       await refreshAll();
       setDriveFiles([]);
       setSyncSummary(null);
@@ -169,41 +172,45 @@ export default function DriveDesktopPage() {
   };
 
   const handlePickSyncFolder = async (): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Sync-map kiezen", async () => {
-      await window.desktopAPI.pickSyncFolder();
+      await desktopAPI.pickSyncFolder();
       await refreshAll();
       setSyncSummary(null);
     });
   };
 
   const handleOpenSyncFolder = async (): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Sync-map openen", async () => {
-      await window.desktopAPI.openSyncFolder();
+      await desktopAPI.openSyncFolder();
     });
   };
 
   const handleUploadLocalFile = async (relativePath: string): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Bestand uploaden", async () => {
-      await window.desktopAPI.uploadFile(relativePath);
+      await desktopAPI.uploadFile(relativePath);
       await refreshDriveFiles();
     });
   };
 
   const handleDownloadDriveFile = async (entry: DriveFileEntry): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Bestand downloaden", async () => {
-      await window.desktopAPI.downloadFile({
+      await desktopAPI.downloadFile({
         fileId: entry.id,
         relativePath: entry.relativePath,
       });
@@ -212,11 +219,12 @@ export default function DriveDesktopPage() {
   };
 
   const handleSyncNow = async (): Promise<void> => {
-    if (!window.desktopAPI) {
+    const desktopAPI = window.desktopAPI;
+    if (!desktopAPI) {
       return;
     }
     await runAction("Synchroniseren", async () => {
-      const result = await window.desktopAPI.runSync();
+      const result = await desktopAPI.runSync();
       setSyncSummary(result);
       await refreshAll();
     });
@@ -329,7 +337,7 @@ export default function DriveDesktopPage() {
             <p className="text-sm text-zinc-400 mb-4">
               Kies de map die je wilt synchroniseren. Deze app gebruikt een
               dedicated Drive-map:
-              <span className="ml-2 text-zinc-200">{`"${"Cursor Google Drive Desktop Sync"}"`}</span>
+              <span className="ml-2 text-zinc-200">"Cursor Google Drive Desktop Sync"</span>
             </p>
             <p className="text-sm text-zinc-300 break-all">
               {state?.syncFolder ?? "Nog geen map gekozen"}
@@ -383,7 +391,9 @@ export default function DriveDesktopPage() {
             </div>
             <ul className="mt-4 max-h-36 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-xs text-zinc-400 space-y-1">
               {syncSummary.details.length > 0 ? (
-                syncSummary.details.map((detail) => <li key={detail}>{detail}</li>)
+                syncSummary.details.map((detail, index) => (
+                  <li key={`${index}-${detail}`}>{detail}</li>
+                ))
               ) : (
                 <li>Geen wijzigingen.</li>
               )}

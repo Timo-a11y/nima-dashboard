@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import path from "node:path";
+import type { OpenDialogOptions } from "electron";
 import type {
   DesktopState,
   OauthConfig,
@@ -80,11 +81,14 @@ function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.pickSyncFolder, async () => {
-    const result = await dialog.showOpenDialog(mainWindow ?? undefined, {
+    const dialogOptions: OpenDialogOptions = {
       title: "Kies een lokale sync-map",
       defaultPath: driveSyncService.getSyncFolder() ?? app.getPath("documents"),
       properties: ["openDirectory", "createDirectory"],
-    });
+    };
+    const result = mainWindow
+      ? await dialog.showOpenDialog(mainWindow, dialogOptions)
+      : await dialog.showOpenDialog(dialogOptions);
 
     if (result.canceled || result.filePaths.length === 0) {
       return driveSyncService.getSyncFolder();
