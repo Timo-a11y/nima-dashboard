@@ -29,6 +29,12 @@ De e-mail is opgebouwd in deze volgorde:
 1. **Vacatures van vandaag**
 2. **Posts/vacatures van eerder die week t/m 10 dagen geleden**
 
+Het script forceert resultaten op **Nederland** met:
+
+- LinkedIn locatie (`LINKEDIN_LOCATION`)
+- LinkedIn geoId voor Nederland (`LINKEDIN_GEO_ID=102890719`)
+- Een extra post-filter dat vacatures buiten Nederland uitsluit
+
 ### Vereiste GitHub Secrets
 
 Voeg in je GitHub repository de volgende **Secrets** toe:
@@ -42,6 +48,7 @@ Voeg in je GitHub repository de volgende **Secrets** toe:
 Optionele **Variables**:
 
 - `LINKEDIN_LOCATION` (default script: `Nederland`)
+- `LINKEDIN_GEO_ID` (default script: `102890719`, Nederland)
 - `LINKEDIN_TIME_RANGE` (default script: `r864000`, laatste 10 dagen)
 - `LINKEDIN_MAX_PAGES` (default script: `4`)
 - `EMAIL_FROM` (default: `SMTP_USER`)

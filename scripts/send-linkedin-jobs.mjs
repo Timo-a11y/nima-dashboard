@@ -12,9 +12,55 @@ const DEFAULT_KEYWORDS = [
 const DEFAULT_LOCATION = "Nederland";
 const DEFAULT_RECIPIENTS = "tvanzolingen@gmail.com,a.sarhatlic@gmail.com";
 const DEFAULT_TIME_RANGE = "r864000"; // Last 10 days on LinkedIn.
+const DEFAULT_GEO_ID = "102890719"; // LinkedIn geoId for the Netherlands.
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
 const REPORT_TIME_ZONE = "Europe/Amsterdam";
+const DUTCH_LOCATION_MARKERS = [
+  "netherlands",
+  "nederland",
+  "amsterdam",
+  "rotterdam",
+  "the hague",
+  "den haag",
+  "utrecht",
+  "eindhoven",
+  "groningen",
+  "tilburg",
+  "almere",
+  "breda",
+  "nijmegen",
+  "enschede",
+  "haarlem",
+  "arnhem",
+  "zaanstad",
+  "amersfoort",
+  "apeldoorn",
+  "hoorn",
+  "maastricht",
+  "dordrecht",
+  "leiden",
+  "zwolle",
+  "zoetermeer",
+  "delft",
+  "deventer",
+  "leeuwarden",
+  "s hertogenbosch",
+  "den bosch",
+  "noord-holland",
+  "north holland",
+  "zuid-holland",
+  "south holland",
+  "noord-brabant",
+  "gelderland",
+  "utrecht province",
+  "limburg",
+  "overijssel",
+  "flevoland",
+  "friesland",
+  "drenthe",
+  "zeeland",
+];
 
 function readEnv(name, fallback = "") {
   const value = process.env[name];
@@ -68,7 +114,7 @@ function normalizeLinkedInUrl(input) {
   }
 }
 
-function buildSearchUrl({ keywords, location, start, timeRange }) {
+function buildSearchUrl({ keywords, location, start, timeRange, geoId }) {
   const params = new URLSearchParams({
     keywords,
     start: String(start),
@@ -78,6 +124,9 @@ function buildSearchUrl({ keywords, location, start, timeRange }) {
 
   if (location) {
     params.set("location", location);
+  }
+  if (geoId) {
+    params.set("geoId", geoId);
   }
 
   return `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params.toString()}`;
@@ -162,11 +211,46 @@ function mergeJobsByLink(items) {
   return Array.from(byLink.values());
 }
 
+function normalizeForLocationMatch(value) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isDutchLocation(location) {
+  const normalized = normalizeForLocationMatch(location || "");
+  if (!normalized || normalized === "unknown location") return false;
+
+  return DUTCH_LOCATION_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function keepOnlyDutchJobs(jobs) {
+  const dutchJobs = [];
+  const excludedJobs = [];
+
+  for (const job of jobs) {
+    if (isDutchLocation(job.location)) {
+      dutchJobs.push(job);
+    } else {
+      excludedJobs.push(job);
+    }
+  }
+
+  return {
+    dutchJobs,
+    excludedJobs,
+  };
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function scrapeLinkedInJobs({ keywords, location, timeRange, maxPages }) {
+async function scrapeLinkedInJobs({ keywords, location, timeRange, maxPages, geoId }) {
   const headers = {
     "User-Agent":
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -180,7 +264,7 @@ async function scrapeLinkedInJobs({ keywords, location, timeRange, maxPages }) {
 
   for (let page = 0; page < maxPages; page += 1) {
     const start = page * PAGE_SIZE;
-    const url = buildSearchUrl({ keywords, location, start, timeRange });
+    const url = buildSearchUrl({ keywords, location, start, timeRange, geoId });
     console.log(`[linkedin] Fetching page ${page + 1}/${maxPages}: ${url}`);
 
     const response = await fetch(url, { headers });
@@ -492,6 +576,7 @@ async function main() {
   const location = readEnv("LINKEDIN_LOCATION", DEFAULT_LOCATION);
   const timeRange = readEnv("LINKEDIN_TIME_RANGE", DEFAULT_TIME_RANGE);
   const maxPages = readNumberEnv("LINKEDIN_MAX_PAGES", 4);
+  const geoId = readEnv("LINKEDIN_GEO_ID", DEFAULT_GEO_ID);
 
   const smtpHost = requiredEnv("SMTP_HOST");
   const smtpPort = readNumberEnv("SMTP_PORT", 587);
@@ -502,7 +587,9 @@ async function main() {
   const to = readEnv("EMAIL_TO", DEFAULT_RECIPIENTS);
   const from = readEnv("EMAIL_FROM", smtpUser);
 
-  console.log(`[config] keywords="${keywords.join(" | ")}" location="${location || "ANY"}" maxPages=${maxPages}`);
+  console.log(
+    `[config] keywords="${keywords.join(" | ")}" location="${location || "ANY"}" geoId="${geoId || "NONE"}" maxPages=${maxPages}`
+  );
   console.log(`[config] email to="${to}" from="${from}"`);
 
   const allJobs = [];
@@ -513,9 +600,14 @@ async function main() {
       location,
       timeRange,
       maxPages,
+      geoId,
     });
+    const { dutchJobs, excludedJobs } = keepOnlyDutchJobs(jobsForKeyword);
+    console.log(
+      `[linkedin] Keyword "${keyword}" kept ${dutchJobs.length}/${jobsForKeyword.length} jobs in NL and excluded ${excludedJobs.length} outside NL.`
+    );
 
-    for (const job of jobsForKeyword) {
+    for (const job of dutchJobs) {
       allJobs.push({
         ...job,
         matchedKeywords: [keyword],

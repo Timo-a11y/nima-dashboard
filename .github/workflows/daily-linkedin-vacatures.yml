@@ -27,6 +27,7 @@ jobs:
         env:
           LINKEDIN_KEYWORDS: Interim Marketing,Freelance Marketing,Marketing Manager,Campaign Manager,Paid Media Manager,Pl Marketing
           LINKEDIN_LOCATION: Nederland
+          LINKEDIN_GEO_ID: 102890719
           LINKEDIN_TIME_RANGE: r864000
           LINKEDIN_MAX_PAGES: ${{ vars.LINKEDIN_MAX_PAGES }}
           EMAIL_TO: tvanzolingen@gmail.com,a.sarhatlic@gmail.com
