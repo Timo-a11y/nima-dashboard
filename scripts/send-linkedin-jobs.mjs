@@ -2,7 +2,7 @@ import * as cheerio from "cheerio";
 import nodemailer from "nodemailer";
 
 const DEFAULT_KEYWORDS = "Appointment Setter";
-const DEFAULT_RECIPIENT = "suuz@studiobenedek.nl";
+const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
 const DEFAULT_TIME_RANGE = "r86400"; // Last 24 hours on LinkedIn.
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
@@ -236,7 +236,7 @@ async function main() {
   const smtpUser = requiredEnv("SMTP_USER");
   const smtpPass = requiredEnv("SMTP_PASS");
 
-  const to = readEnv("EMAIL_TO", DEFAULT_RECIPIENT);
+  const to = readEnv("EMAIL_TO", DEFAULT_RECIPIENTS);
   const from = readEnv("EMAIL_FROM", smtpUser);
 
   console.log(`[config] keywords="${keywords}" location="${location || "ANY"}" maxPages=${maxPages}`);

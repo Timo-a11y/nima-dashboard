@@ -2,7 +2,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Dagelijkse LinkedIn vacatures per e-mail
 
-Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures voor **"Appointment Setter"** ophaalt en mailt naar **suuz@studiobenedek.nl**.
+Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures voor **"Appointment Setter"** ophaalt en mailt naar **suuz@studiobenedek.nl** en **tvanzolingen@gmail.com**.
 
 ### Hoe het werkt
 
@@ -28,6 +28,7 @@ Optionele **Variables**:
 - `LINKEDIN_TIME_RANGE` (default script: `r86400`, laatste 24 uur)
 - `LINKEDIN_MAX_PAGES` (default script: `4`)
 - `EMAIL_FROM` (default: `SMTP_USER`)
+- `EMAIL_TO` (optioneel, meerdere ontvangers met komma's; default: `suuz@studiobenedek.nl,tvanzolingen@gmail.com`)
 
 ### Lokaal testen
 
