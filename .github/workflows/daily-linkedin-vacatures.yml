@@ -26,7 +26,7 @@ jobs:
         run: npm run jobs:linkedin
         env:
           LINKEDIN_KEYWORDS: Appointment Setter
-          LINKEDIN_LOCATION: ${{ vars.LINKEDIN_LOCATION }}
+          LINKEDIN_LOCATIONS: ${{ vars.LINKEDIN_LOCATIONS }}
           LINKEDIN_TIME_RANGE: ${{ vars.LINKEDIN_TIME_RANGE }}
           LINKEDIN_MAX_PAGES: ${{ vars.LINKEDIN_MAX_PAGES }}
           EMAIL_TO: suuz@studiobenedek.nl,tvanzolingen@gmail.com

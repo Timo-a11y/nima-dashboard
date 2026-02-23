@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 const DEFAULT_KEYWORDS = "Appointment Setter";
 const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
 const DEFAULT_TIME_RANGE = "r86400"; // Last 24 hours on LinkedIn.
+const DEFAULT_SEARCH_LOCATIONS = ["United States", "Netherlands", "Belgium"];
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
 
@@ -32,6 +33,28 @@ function requiredEnv(name) {
   return value;
 }
 
+function parseCommaSeparatedList(value) {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function getSearchLocations() {
+  const multiLocationValue = readEnv("LINKEDIN_LOCATIONS", "");
+  const parsedMultiLocations = parseCommaSeparatedList(multiLocationValue);
+  if (parsedMultiLocations.length > 0) {
+    return parsedMultiLocations;
+  }
+
+  const singleLocationValue = readEnv("LINKEDIN_LOCATION", "");
+  if (singleLocationValue) {
+    return [singleLocationValue];
+  }
+
+  return [...DEFAULT_SEARCH_LOCATIONS];
+}
+
 function normalizeLinkedInUrl(input) {
   try {
     const parsed = new URL(input);
@@ -58,7 +81,7 @@ function buildSearchUrl({ keywords, location, start, timeRange }) {
   return `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?${params.toString()}`;
 }
 
-function extractJobsFromHtml(html) {
+function extractJobsFromHtml(html, searchLocation) {
   const $ = cheerio.load(html);
   const jobs = [];
 
@@ -84,6 +107,7 @@ function extractJobsFromHtml(html) {
       location: location || "Unknown location",
       postedAt: postedAt || "Unknown date",
       link,
+      sourceSearchLocations: searchLocation ? [searchLocation] : [],
     });
   });
 
@@ -91,24 +115,35 @@ function extractJobsFromHtml(html) {
 }
 
 function uniqueJobs(items) {
-  const deduped = [];
-  const seen = new Set();
+  const byLink = new Map();
 
   for (const item of items) {
     const key = item.link.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(item);
+
+    if (!byLink.has(key)) {
+      byLink.set(key, {
+        ...item,
+        sourceSearchLocations: [...item.sourceSearchLocations],
+      });
+      continue;
+    }
+
+    const existing = byLink.get(key);
+    const mergedSourceLocations = new Set(existing.sourceSearchLocations);
+    for (const sourceLocation of item.sourceSearchLocations) {
+      mergedSourceLocations.add(sourceLocation);
+    }
+    existing.sourceSearchLocations = [...mergedSourceLocations];
   }
 
-  return deduped;
+  return [...byLink.values()];
 }
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function scrapeLinkedInJobs({ keywords, location, timeRange, maxPages }) {
+async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPages }) {
   const headers = {
     "User-Agent":
       "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -120,34 +155,43 @@ async function scrapeLinkedInJobs({ keywords, location, timeRange, maxPages }) {
 
   const allJobs = [];
 
-  for (let page = 0; page < maxPages; page += 1) {
-    const start = page * PAGE_SIZE;
-    const url = buildSearchUrl({ keywords, location, start, timeRange });
-    console.log(`[linkedin] Fetching page ${page + 1}/${maxPages}: ${url}`);
+  for (const searchLocation of searchLocations) {
+    console.log(`[linkedin] Searching location: ${searchLocation}`);
 
-    const response = await fetch(url, { headers });
-    if (!response.ok) {
-      throw new Error(`LinkedIn request failed with status ${response.status} at page ${page + 1}`);
+    for (let page = 0; page < maxPages; page += 1) {
+      const start = page * PAGE_SIZE;
+      const url = buildSearchUrl({ keywords, location: searchLocation, start, timeRange });
+      console.log(`[linkedin] Fetching page ${page + 1}/${maxPages}: ${url}`);
+
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        throw new Error(
+          `LinkedIn request failed with status ${response.status} at page ${page + 1} for location "${searchLocation}"`
+        );
+      }
+
+      const html = await response.text();
+      const jobs = extractJobsFromHtml(html, searchLocation);
+      console.log(
+        `[linkedin] Location "${searchLocation}" page ${page + 1} returned ${jobs.length} jobs.`
+      );
+
+      if (jobs.length === 0) {
+        break;
+      }
+
+      allJobs.push(...jobs);
+      await sleep(REQUEST_DELAY_MS);
     }
-
-    const html = await response.text();
-    const jobs = extractJobsFromHtml(html);
-    console.log(`[linkedin] Page ${page + 1} returned ${jobs.length} jobs.`);
-
-    if (jobs.length === 0) {
-      break;
-    }
-
-    allJobs.push(...jobs);
-    await sleep(REQUEST_DELAY_MS);
   }
 
   return uniqueJobs(allJobs);
 }
 
-function buildEmailContent({ jobs, keywords, location }) {
+function buildEmailContent({ jobs, keywords, searchLocations }) {
   const now = new Date().toISOString();
-  const criteriaLine = location ? `${keywords} in ${location}` : keywords;
+  const criteriaLine =
+    searchLocations.length > 0 ? `${keywords} in ${searchLocations.join(", ")}` : keywords;
 
   if (jobs.length === 0) {
     return {
@@ -170,8 +214,13 @@ function buildEmailContent({ jobs, keywords, location }) {
 
   const listText = jobs
     .map(
-      (job, index) =>
-        `${index + 1}. ${job.title} — ${job.company} (${job.location})\n   ${job.link}\n   Geplaatst: ${job.postedAt}`
+      (job, index) => {
+        const sourceLocationsLine =
+          job.sourceSearchLocations.length > 0
+            ? `\n   Zoekregio: ${job.sourceSearchLocations.join(", ")}`
+            : "";
+        return `${index + 1}. ${job.title} — ${job.company} (${job.location})\n   ${job.link}\n   Geplaatst: ${job.postedAt}${sourceLocationsLine}`;
+      }
     )
     .join("\n\n");
 
@@ -181,7 +230,11 @@ function buildEmailContent({ jobs, keywords, location }) {
         <li style="margin-bottom:12px;">
           <a href="${job.link}"><strong>${index + 1}. ${job.title}</strong></a><br/>
           ${job.company} &middot; ${job.location}<br/>
-          Geplaatst: ${job.postedAt}
+          Geplaatst: ${job.postedAt}${
+            job.sourceSearchLocations.length > 0
+              ? `<br/><em>Zoekregio: ${job.sourceSearchLocations.join(", ")}</em>`
+              : ""
+          }
         </li>
       `
     )
@@ -229,7 +282,7 @@ async function sendEmail({ to, from, smtpHost, smtpPort, smtpSecure, smtpUser, s
 
 async function main() {
   const keywords = readEnv("LINKEDIN_KEYWORDS", DEFAULT_KEYWORDS);
-  const location = readEnv("LINKEDIN_LOCATION", "");
+  const searchLocations = getSearchLocations();
   const timeRange = readEnv("LINKEDIN_TIME_RANGE", DEFAULT_TIME_RANGE);
   const maxPages = readNumberEnv("LINKEDIN_MAX_PAGES", 4);
 
@@ -242,12 +295,14 @@ async function main() {
   const to = readEnv("EMAIL_TO", DEFAULT_RECIPIENTS);
   const from = readEnv("EMAIL_FROM", smtpUser);
 
-  console.log(`[config] keywords="${keywords}" location="${location || "ANY"}" maxPages=${maxPages}`);
+  console.log(
+    `[config] keywords="${keywords}" locations="${searchLocations.join(", ")}" maxPages=${maxPages}`
+  );
   console.log(`[config] email to="${to}" from="${from}"`);
 
   const jobs = await scrapeLinkedInJobs({
     keywords,
-    location,
+    searchLocations,
     timeRange,
     maxPages,
   });
@@ -257,7 +312,7 @@ async function main() {
   const emailContent = buildEmailContent({
     jobs,
     keywords,
-    location,
+    searchLocations,
   });
 
   await sendEmail({
