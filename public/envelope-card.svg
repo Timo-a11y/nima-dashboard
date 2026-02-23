@@ -1,0 +1,61 @@
+<svg width="1400" height="900" viewBox="0 0 1400 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+<defs>
+<linearGradient id="sceneBg" x1="700" y1="0" x2="700" y2="900" gradientUnits="userSpaceOnUse">
+<stop stop-color="#E7EDF5"/>
+<stop offset="1" stop-color="#D9E2EE"/>
+</linearGradient>
+<linearGradient id="photoBg" x1="700" y1="190" x2="700" y2="710" gradientUnits="userSpaceOnUse">
+<stop stop-color="#F4F7FB"/>
+<stop offset="1" stop-color="#DDE5EF"/>
+</linearGradient>
+<linearGradient id="paperA" x1="0" y1="0" x2="1" y2="1">
+<stop stop-color="#FFFFFF"/>
+<stop offset="1" stop-color="#E6EDF7"/>
+</linearGradient>
+<linearGradient id="paperB" x1="0" y1="0" x2="1" y2="1">
+<stop stop-color="#FDFEFF"/>
+<stop offset="1" stop-color="#DEE7F3"/>
+</linearGradient>
+<radialGradient id="glowA" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(315 260) rotate(90) scale(108 108)">
+<stop stop-color="#FFFFFF" stop-opacity="0.86"/>
+<stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+</radialGradient>
+<radialGradient id="glowB" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(1078 244) rotate(90) scale(132 132)">
+<stop stop-color="#F8FBFF" stop-opacity="0.82"/>
+<stop offset="1" stop-color="#F8FBFF" stop-opacity="0"/>
+</radialGradient>
+</defs>
+
+<rect width="1400" height="900" fill="url(#sceneBg)"/>
+<rect x="70" y="70" width="1260" height="760" rx="64" fill="#CAD5E4"/>
+<rect x="185" y="170" width="1030" height="560" rx="42" fill="url(#photoBg)"/>
+<circle cx="315" cy="260" r="108" fill="url(#glowA)"/>
+<circle cx="1078" cy="244" r="132" fill="url(#glowB)"/>
+
+<!-- Back envelope -->
+<g transform="translate(280 255) rotate(-8 320 220)">
+<rect x="0" y="70" width="640" height="350" rx="28" fill="url(#paperA)"/>
+<path d="M0 106C0 87.2223 15.2223 72 34 72H606C624.778 72 640 87.2223 640 106V170L320 314L0 170V106Z" fill="#E4EBF5"/>
+<path d="M0 420L220 210L320 314L420 210L640 420H0Z" fill="#D2DDEA"/>
+<path d="M0 70L320 314L640 70" stroke="#CBD6E4" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="470" y="104" width="118" height="82" rx="12" fill="#D94B66"/>
+<rect x="488" y="120" width="82" height="50" rx="8" fill="#F2A0AF"/>
+</g>
+
+<!-- Front envelope -->
+<g transform="translate(430 280)">
+<rect x="0" y="64" width="700" height="382" rx="30" fill="url(#paperB)"/>
+<path d="M0 102C0 82.1178 16.1178 66 36 66H664C683.882 66 700 82.1178 700 102V176L350 344L0 176V102Z" fill="#EAF0F8"/>
+<path d="M0 446L240 226L350 344L460 226L700 446H0Z" fill="#D7E2EF"/>
+<path d="M0 64L350 344L700 64" stroke="#C7D3E2" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="52" y="0" width="596" height="134" rx="20" fill="#F7FAFE" fill-opacity="0.95"/>
+<rect x="84" y="36" width="318" height="14" rx="7" fill="#D3DDEA"/>
+<rect x="84" y="64" width="252" height="14" rx="7" fill="#DCE5F0"/>
+<rect x="84" y="92" width="288" height="14" rx="7" fill="#D3DDEA"/>
+<rect x="522" y="24" width="96" height="68" rx="12" fill="#3E4D6C"/>
+<circle cx="570" cy="58" r="17" fill="#64789C"/>
+</g>
+
+<!-- Subtle frame line for postcard vibe -->
+<rect x="220" y="205" width="960" height="490" rx="36" stroke="#B9C6D9" stroke-width="8" stroke-opacity="0.7"/>
+</svg>

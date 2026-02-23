@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="nl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Only voor de echte Fans</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      }
+    </style>
+  </head>
+  <body class="h-dvh overflow-hidden bg-slate-50 px-5 py-6 text-slate-900 sm:px-6 sm:py-8">
+    <main class="mx-auto flex h-full max-w-3xl flex-col items-center justify-center text-center">
+      <div class="w-full max-w-[520px] rounded-3xl bg-white p-4 shadow-[0_40px_90px_-35px_rgba(15,23,42,0.55)] sm:p-5">
+        <div class="aspect-[3/2] overflow-hidden rounded-2xl border border-slate-100 bg-slate-100">
+          <img
+            src="./envelope-card.svg"
+            alt="Vage vorm van een envelop"
+            class="h-full w-full scale-110 object-cover blur-md"
+          />
+        </div>
+      </div>
+
+      <p class="mt-6 text-[11px] font-semibold uppercase tracking-[0.28em] text-gray-500 sm:text-xs">Only voor de echte Fans</p>
+      <h1 class="mt-2 max-w-2xl text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+        Elke maand: Twee Tieten in een envelop
+      </h1>
+      <p class="mt-3 text-base text-slate-600 sm:text-lg">Voor maar 5 euro per maand.</p>
+
+      <button
+        id="openModal"
+        class="mt-6 rounded-full bg-black px-8 py-3.5 text-sm font-semibold text-white transition-all duration-300 hover:-translate-y-0.5 hover:bg-slate-900 hover:shadow-[0_16px_35px_-16px_rgba(15,23,42,0.7)] sm:px-9 sm:py-4 sm:text-base"
+      >
+        Meld je nu aan
+      </button>
+    </main>
+
+    <div id="modalBackdrop" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/45 px-4 backdrop-blur-sm">
+      <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-[0_35px_80px_-30px_rgba(15,23,42,0.6)] sm:p-7">
+        <div class="mb-6 flex items-start justify-between gap-4">
+          <div class="text-left">
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">Aanmelding</p>
+            <h2 class="mt-2 text-2xl font-semibold text-slate-900">Start je abonnement</h2>
+          </div>
+          <button
+            id="closeModal"
+            class="rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+          >
+            Sluiten
+          </button>
+        </div>
+
+        <div id="successMessage" class="hidden rounded-xl border border-slate-200 bg-slate-50 p-5 text-left">
+          <p class="text-sm font-medium text-slate-700">Bedankt, je aanmelding is ontvangen.</p>
+          <p class="mt-2 text-sm text-slate-500">Geen zorgen: dit is alleen een droge grap, er wordt niets afgeschreven.</p>
+        </div>
+
+        <form id="signupForm" class="space-y-4 text-left">
+          <label class="block">
+            <span class="mb-1.5 block text-sm font-medium text-slate-700">Naam</span>
+            <input
+              type="text"
+              name="name"
+              required
+              class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              placeholder="Je volledige naam"
+            />
+          </label>
+
+          <label class="block">
+            <span class="mb-1.5 block text-sm font-medium text-slate-700">E-mail</span>
+            <input
+              type="email"
+              name="email"
+              required
+              class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+              placeholder="naam@voorbeeld.nl"
+            />
+          </label>
+
+          <label class="block">
+            <span class="mb-1.5 block text-sm font-medium text-slate-700">Nep-betaalmethode</span>
+            <select
+              name="payment"
+              required
+              class="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+            >
+              <option value="" disabled selected>Kies een methode</option>
+              <option value="ideal">iDEAL (nep)</option>
+              <option value="creditcard">Creditcard (nep)</option>
+              <option value="bancontact">Bancontact (nep)</option>
+            </select>
+          </label>
+
+          <button
+            type="submit"
+            class="mt-2 w-full rounded-xl bg-black px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-900"
+          >
+            Aanmelding bevestigen
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const openModalButton = document.getElementById('openModal');
+      const closeModalButton = document.getElementById('closeModal');
+      const modalBackdrop = document.getElementById('modalBackdrop');
+      const signupForm = document.getElementById('signupForm');
+      const successMessage = document.getElementById('successMessage');
+
+      function openModal() {
+        modalBackdrop.classList.remove('hidden');
+        modalBackdrop.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+        successMessage.classList.add('hidden');
+        signupForm.classList.remove('hidden');
+      }
+
+      function closeModal() {
+        modalBackdrop.classList.add('hidden');
+        modalBackdrop.classList.remove('flex');
+        document.body.style.overflow = '';
+      }
+
+      openModalButton.addEventListener('click', openModal);
+      closeModalButton.addEventListener('click', closeModal);
+
+      modalBackdrop.addEventListener('click', function (event) {
+        if (event.target === modalBackdrop) {
+          closeModal();
+        }
+      });
+
+      document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          closeModal();
+        }
+      });
+
+      signupForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        signupForm.classList.add('hidden');
+        successMessage.classList.remove('hidden');
+      });
+    </script>
+  </body>
+</html>
