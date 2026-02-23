@@ -9,7 +9,10 @@ const REQUEST_DELAY_MS = 1200;
 
 function readEnv(name, fallback = "") {
   const value = process.env[name];
-  return value === undefined ? fallback : value.trim();
+  if (value === undefined) return fallback;
+
+  const trimmed = value.trim();
+  return trimmed === "" ? fallback : trimmed;
 }
 
 function readNumberEnv(name, fallback) {
