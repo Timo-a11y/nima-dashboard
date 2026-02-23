@@ -2,7 +2,19 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Dagelijkse LinkedIn vacatures per e-mail
 
-Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures voor **"Appointment Setter"** ophaalt en mailt naar **suuz@studiobenedek.nl** en **tvanzolingen@gmail.com**.
+Deze repository bevat een automatische flow die dagelijks LinkedIn-vacatures in **Nederland** ophaalt voor:
+
+- **Interim Marketing**
+- **Freelance Marketing**
+- **Marketing Manager**
+- **Campaign Manager**
+- **Paid Media Manager**
+- **Pl Marketing**
+
+De resultaten worden gemaild naar:
+
+- **tvanzolingen@gmail.com**
+- **a.sarhatlic@gmail.com**
 
 ### Hoe het werkt
 
@@ -11,6 +23,11 @@ Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures 
 - Scheduler: `.github/workflows/daily-linkedin-vacatures.yml`
 
 De workflow draait dagelijks om **06:00 UTC** (en is ook handmatig te starten via `workflow_dispatch`).
+
+De e-mail is opgebouwd in deze volgorde:
+
+1. **Vacatures van vandaag**
+2. **Posts/vacatures van eerder die week t/m 10 dagen geleden**
 
 ### Vereiste GitHub Secrets
 
@@ -24,11 +41,11 @@ Voeg in je GitHub repository de volgende **Secrets** toe:
 
 Optionele **Variables**:
 
-- `LINKEDIN_LOCATION` (bijv. `Nederland`)
-- `LINKEDIN_TIME_RANGE` (default script: `r86400`, laatste 24 uur)
+- `LINKEDIN_LOCATION` (default script: `Nederland`)
+- `LINKEDIN_TIME_RANGE` (default script: `r864000`, laatste 10 dagen)
 - `LINKEDIN_MAX_PAGES` (default script: `4`)
 - `EMAIL_FROM` (default: `SMTP_USER`)
-- `EMAIL_TO` (optioneel, meerdere ontvangers met komma's; default: `suuz@studiobenedek.nl,tvanzolingen@gmail.com`)
+- `EMAIL_TO` (optioneel, meerdere ontvangers met komma's; default: `tvanzolingen@gmail.com,a.sarhatlic@gmail.com`)
 
 ### Lokaal testen
 

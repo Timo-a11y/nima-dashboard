@@ -1,11 +1,20 @@
 import * as cheerio from "cheerio";
 import nodemailer from "nodemailer";
 
-const DEFAULT_KEYWORDS = "Appointment Setter";
-const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
-const DEFAULT_TIME_RANGE = "r86400"; // Last 24 hours on LinkedIn.
+const DEFAULT_KEYWORDS = [
+  "Interim Marketing",
+  "Freelance Marketing",
+  "Marketing Manager",
+  "Campaign Manager",
+  "Paid Media Manager",
+  "Pl Marketing",
+].join(", ");
+const DEFAULT_LOCATION = "Nederland";
+const DEFAULT_RECIPIENTS = "tvanzolingen@gmail.com,a.sarhatlic@gmail.com";
+const DEFAULT_TIME_RANGE = "r864000"; // Last 10 days on LinkedIn.
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
+const REPORT_TIME_ZONE = "Europe/Amsterdam";
 
 function readEnv(name, fallback = "") {
   const value = process.env[name];
@@ -27,6 +36,25 @@ function requiredEnv(name) {
     throw new Error(`Missing required environment variable: ${name}`);
   }
   return value;
+}
+
+function parseKeywords(input) {
+  const values = input
+    .split(/[\n,;|]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  const seen = new Set();
+  const deduped = [];
+
+  for (const value of values) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(value);
+  }
+
+  return deduped;
 }
 
 function normalizeLinkedInUrl(input) {
@@ -64,7 +92,10 @@ function extractJobsFromHtml(html) {
     const title = element.find("h3.base-search-card__title").text().trim();
     const company = element.find("h4.base-search-card__subtitle").text().trim();
     const location = element.find(".job-search-card__location").text().trim();
-    const postedAt = element.find("time").attr("datetime") || element.find("time").text().trim();
+    const timeElement = element.find("time").first();
+    const postedAtDatetime = (timeElement.attr("datetime") || "").trim();
+    const postedAtText = timeElement.text().trim();
+    const postedAt = postedAtText || postedAtDatetime || "Unknown date";
     const href =
       element.find("a.base-card__full-link").attr("href") ||
       element.find("a").first().attr("href") ||
@@ -80,6 +111,7 @@ function extractJobsFromHtml(html) {
       company: company || "Unknown company",
       location: location || "Unknown location",
       postedAt: postedAt || "Unknown date",
+      postedAtDatetime,
       link,
     });
   });
@@ -99,6 +131,35 @@ function uniqueJobs(items) {
   }
 
   return deduped;
+}
+
+function mergeJobsByLink(items) {
+  const byLink = new Map();
+
+  for (const item of items) {
+    const key = item.link.toLowerCase();
+    const existing = byLink.get(key);
+
+    if (!existing) {
+      byLink.set(key, {
+        ...item,
+        matchedKeywords: [...new Set(item.matchedKeywords || [])],
+      });
+      continue;
+    }
+
+    const mergedKeywords = new Set([...(existing.matchedKeywords || []), ...(item.matchedKeywords || [])]);
+    existing.matchedKeywords = Array.from(mergedKeywords);
+
+    if ((!existing.postedAtDatetime || existing.postedAtDatetime === "Unknown date") && item.postedAtDatetime) {
+      existing.postedAtDatetime = item.postedAtDatetime;
+    }
+    if ((!existing.postedAt || existing.postedAt === "Unknown date") && item.postedAt) {
+      existing.postedAt = item.postedAt;
+    }
+  }
+
+  return Array.from(byLink.values());
 }
 
 function sleep(ms) {
@@ -142,62 +203,259 @@ async function scrapeLinkedInJobs({ keywords, location, timeRange, maxPages }) {
   return uniqueJobs(allJobs);
 }
 
-function buildEmailContent({ jobs, keywords, location }) {
-  const now = new Date().toISOString();
-  const criteriaLine = location ? `${keywords} in ${location}` : keywords;
+function formatDateKey(date) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: REPORT_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
 
+  if (!year || !month || !day) {
+    throw new Error("Unable to derive date key for report grouping.");
+  }
+
+  return `${year}-${month}-${day}`;
+}
+
+function dateKeyToDayNumber(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86400000);
+}
+
+function parseRelativeDate(raw, now) {
+  const input = raw.trim().toLowerCase();
+  if (!input) return null;
+
+  if (/(today|vandaag|just now|zojuist|moments ago)/.test(input)) {
+    return now;
+  }
+  if (/(yesterday|gisteren)/.test(input)) {
+    return new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  }
+
+  const minuteMatch = input.match(/(\d+)\s*(minute|minutes|minuten|mins|minuut)/);
+  if (minuteMatch) {
+    const minutes = Number.parseInt(minuteMatch[1], 10);
+    return new Date(now.getTime() - minutes * 60 * 1000);
+  }
+
+  const hourMatch = input.match(/(\d+)\s*(hour|hours|uur|uren)/);
+  if (hourMatch) {
+    const hours = Number.parseInt(hourMatch[1], 10);
+    return new Date(now.getTime() - hours * 60 * 60 * 1000);
+  }
+
+  const dayMatch = input.match(/(\d+)\s*(day|days|dag|dagen)/);
+  if (dayMatch) {
+    const days = Number.parseInt(dayMatch[1], 10);
+    return new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
+  }
+
+  const weekMatch = input.match(/(\d+)\s*(week|weeks|weken)/);
+  if (weekMatch) {
+    const weeks = Number.parseInt(weekMatch[1], 10);
+    return new Date(now.getTime() - weeks * 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return null;
+}
+
+function parsePostedDate(job, now) {
+  const candidates = [job.postedAtDatetime, job.postedAt];
+
+  for (const candidateRaw of candidates) {
+    const candidate = (candidateRaw || "").trim();
+    if (!candidate) continue;
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)) {
+      return new Date(`${candidate}T12:00:00Z`);
+    }
+
+    const directDate = new Date(candidate);
+    if (!Number.isNaN(directDate.getTime())) {
+      return directDate;
+    }
+  }
+
+  return parseRelativeDate(job.postedAt || "", now);
+}
+
+function sortJobsNewestFirst(items, now) {
+  return [...items].sort((left, right) => {
+    const leftDate = parsePostedDate(left, now);
+    const rightDate = parsePostedDate(right, now);
+
+    if (leftDate && rightDate) {
+      return rightDate.getTime() - leftDate.getTime();
+    }
+    if (leftDate) return -1;
+    if (rightDate) return 1;
+    return left.title.localeCompare(right.title);
+  });
+}
+
+function groupJobsByDate(jobs, now) {
+  const todayJobs = [];
+  const recentJobs = [];
+  const otherJobs = [];
+
+  const nowDayNumber = dateKeyToDayNumber(formatDateKey(now));
+
+  for (const job of jobs) {
+    const parsedDate = parsePostedDate(job, now);
+    if (!parsedDate) {
+      recentJobs.push(job);
+      continue;
+    }
+
+    const jobDayNumber = dateKeyToDayNumber(formatDateKey(parsedDate));
+    const diffDays = nowDayNumber - jobDayNumber;
+
+    if (diffDays <= 0) {
+      todayJobs.push(job);
+    } else if (diffDays <= 10) {
+      recentJobs.push(job);
+    } else {
+      otherJobs.push(job);
+    }
+  }
+
+  return {
+    todayJobs: sortJobsNewestFirst(todayJobs, now),
+    recentJobs: sortJobsNewestFirst(recentJobs, now),
+    otherJobs: sortJobsNewestFirst(otherJobs, now),
+  };
+}
+
+function escapeHtml(value) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatTextList(jobs) {
   if (jobs.length === 0) {
+    return "- Geen vacatures gevonden.";
+  }
+
+  return jobs
+    .map((job, index) => {
+      const keywordText =
+        job.matchedKeywords && job.matchedKeywords.length > 0
+          ? `\n   Match op: ${job.matchedKeywords.join(", ")}`
+          : "";
+      return `${index + 1}. ${job.title} - ${job.company} (${job.location})\n   ${job.link}\n   Geplaatst: ${job.postedAt}${keywordText}`;
+    })
+    .join("\n\n");
+}
+
+function formatHtmlList(jobs) {
+  if (jobs.length === 0) {
+    return "<p>Geen vacatures gevonden.</p>";
+  }
+
+  const listHtml = jobs
+    .map((job, index) => {
+      const keywordHtml =
+        job.matchedKeywords && job.matchedKeywords.length > 0
+          ? `<small>Match op: ${escapeHtml(job.matchedKeywords.join(", "))}</small><br/>`
+          : "";
+      return `
+        <li style="margin-bottom:12px;">
+          <a href="${escapeHtml(job.link)}"><strong>${index + 1}. ${escapeHtml(job.title)}</strong></a><br/>
+          ${escapeHtml(job.company)} &middot; ${escapeHtml(job.location)}<br/>
+          Geplaatst: ${escapeHtml(job.postedAt)}<br/>
+          ${keywordHtml}
+        </li>
+      `;
+    })
+    .join("");
+
+  return `<ol>${listHtml}</ol>`;
+}
+
+function buildEmailContent({ jobs, keywords, location }) {
+  const now = new Date();
+  const generatedAt = now.toLocaleString("nl-NL", {
+    timeZone: REPORT_TIME_ZONE,
+    dateStyle: "short",
+    timeStyle: "medium",
+  });
+  const { todayJobs, recentJobs, otherJobs } = groupJobsByDate(jobs, now);
+  const totalInMainSections = todayJobs.length + recentJobs.length;
+
+  if (totalInMainSections === 0 && otherJobs.length === 0) {
     return {
-      subject: `[LinkedIn Vacatures] Geen resultaten voor "${criteriaLine}"`,
+      subject: `[LinkedIn Marketing Vacatures] Geen resultaten voor "${location}"`,
       text: [
         `Dagelijkse LinkedIn check`,
         ``,
-        `Zoekopdracht: ${criteriaLine}`,
-        `Tijdstip: ${now}`,
+        `Zoekopdrachten: ${keywords.join(", ")}`,
+        `Locatie: ${location || "Alle locaties"}`,
+        `Tijdstip: ${generatedAt} (${REPORT_TIME_ZONE})`,
         ``,
-        `Er zijn geen nieuwe vacatures gevonden in de ingestelde tijdsrange.`,
+        `Er zijn geen vacatures gevonden in de laatste 10 dagen.`,
       ].join("\n"),
       html: `
         <p><strong>Dagelijkse LinkedIn check</strong></p>
-        <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-        <p>Er zijn geen nieuwe vacatures gevonden in de ingestelde tijdsrange.</p>
+        <p>Zoekopdrachten: <strong>${escapeHtml(keywords.join(", "))}</strong><br/>Locatie: <strong>${escapeHtml(
+          location || "Alle locaties"
+        )}</strong><br/>Tijdstip: ${escapeHtml(generatedAt)} (${REPORT_TIME_ZONE})</p>
+        <p>Er zijn geen vacatures gevonden in de laatste 10 dagen.</p>
       `,
     };
   }
 
-  const listText = jobs
-    .map(
-      (job, index) =>
-        `${index + 1}. ${job.title} — ${job.company} (${job.location})\n   ${job.link}\n   Geplaatst: ${job.postedAt}`
-    )
-    .join("\n\n");
+  const todayText = formatTextList(todayJobs);
+  const recentText = formatTextList(recentJobs);
+  const otherText = formatTextList(otherJobs);
 
-  const listHtml = jobs
-    .map(
-      (job, index) => `
-        <li style="margin-bottom:12px;">
-          <a href="${job.link}"><strong>${index + 1}. ${job.title}</strong></a><br/>
-          ${job.company} &middot; ${job.location}<br/>
-          Geplaatst: ${job.postedAt}
-        </li>
-      `
-    )
-    .join("");
+  const todayHtml = formatHtmlList(todayJobs);
+  const recentHtml = formatHtmlList(recentJobs);
+  const otherHtml = formatHtmlList(otherJobs);
 
   return {
-    subject: `[LinkedIn Vacatures] ${jobs.length}x "${criteriaLine}" gevonden`,
+    subject: `[LinkedIn Marketing Vacatures] Vandaag: ${todayJobs.length}, Eerder (1-10 dagen): ${recentJobs.length}`,
     text: [
       `Dagelijkse LinkedIn check`,
       ``,
-      `Zoekopdracht: ${criteriaLine}`,
-      `Tijdstip: ${now}`,
+      `Zoekopdrachten: ${keywords.join(", ")}`,
+      `Locatie: ${location || "Alle locaties"}`,
+      `Tijdstip: ${generatedAt} (${REPORT_TIME_ZONE})`,
       ``,
-      listText,
+      `Vacatures van vandaag (${todayJobs.length})`,
+      todayText,
+      ``,
+      `Posts/vacatures van eerder die week t/m 10 dagen geleden (${recentJobs.length})`,
+      recentText,
+      ...(otherJobs.length > 0
+        ? ["", `Overige resultaten (${otherJobs.length})`, otherText]
+        : []),
     ].join("\n"),
     html: `
       <p><strong>Dagelijkse LinkedIn check</strong></p>
-      <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-      <ol>${listHtml}</ol>
+      <p>
+        Zoekopdrachten: <strong>${escapeHtml(keywords.join(", "))}</strong><br/>
+        Locatie: <strong>${escapeHtml(location || "Alle locaties")}</strong><br/>
+        Tijdstip: ${escapeHtml(generatedAt)} (${REPORT_TIME_ZONE})
+      </p>
+      <h3>Vacatures van vandaag (${todayJobs.length})</h3>
+      ${todayHtml}
+      <h3>Posts/vacatures van eerder die week t/m 10 dagen geleden (${recentJobs.length})</h3>
+      ${recentHtml}
+      ${
+        otherJobs.length > 0
+          ? `<h3>Overige resultaten (${otherJobs.length})</h3>${otherHtml}`
+          : ""
+      }
     `,
   };
 }
@@ -225,8 +483,13 @@ async function sendEmail({ to, from, smtpHost, smtpPort, smtpSecure, smtpUser, s
 }
 
 async function main() {
-  const keywords = readEnv("LINKEDIN_KEYWORDS", DEFAULT_KEYWORDS);
-  const location = readEnv("LINKEDIN_LOCATION", "");
+  const keywordInput = readEnv("LINKEDIN_KEYWORDS", DEFAULT_KEYWORDS);
+  const keywords = parseKeywords(keywordInput);
+  if (keywords.length === 0) {
+    throw new Error("No valid LINKEDIN_KEYWORDS were provided.");
+  }
+
+  const location = readEnv("LINKEDIN_LOCATION", DEFAULT_LOCATION);
   const timeRange = readEnv("LINKEDIN_TIME_RANGE", DEFAULT_TIME_RANGE);
   const maxPages = readNumberEnv("LINKEDIN_MAX_PAGES", 4);
 
@@ -239,15 +502,28 @@ async function main() {
   const to = readEnv("EMAIL_TO", DEFAULT_RECIPIENTS);
   const from = readEnv("EMAIL_FROM", smtpUser);
 
-  console.log(`[config] keywords="${keywords}" location="${location || "ANY"}" maxPages=${maxPages}`);
+  console.log(`[config] keywords="${keywords.join(" | ")}" location="${location || "ANY"}" maxPages=${maxPages}`);
   console.log(`[config] email to="${to}" from="${from}"`);
 
-  const jobs = await scrapeLinkedInJobs({
-    keywords,
-    location,
-    timeRange,
-    maxPages,
-  });
+  const allJobs = [];
+  for (const keyword of keywords) {
+    console.log(`[linkedin] Searching keyword "${keyword}"`);
+    const jobsForKeyword = await scrapeLinkedInJobs({
+      keywords: keyword,
+      location,
+      timeRange,
+      maxPages,
+    });
+
+    for (const job of jobsForKeyword) {
+      allJobs.push({
+        ...job,
+        matchedKeywords: [keyword],
+      });
+    }
+  }
+
+  const jobs = mergeJobsByLink(allJobs);
 
   console.log(`[linkedin] Total unique jobs found: ${jobs.length}`);
 
