@@ -407,11 +407,12 @@ function isLikelyDutchPost(post) {
 }
 
 function matchesPostIntent(post, keyword, phrase) {
-  const normalizedText = normalizeForLocationMatch(`${post.title || ""} ${post.snippet || ""}`);
+  const normalizedText = normalizeForLocationMatch(`${post.title || ""} ${post.snippet || ""} ${post.link || ""}`);
   const keywordTokens = normalizeForLocationMatch(keyword)
     .split(" ")
     .filter((token) => token.length >= 3);
   const normalizedPhrase = normalizeForLocationMatch(phrase);
+  const intentIndicators = ["ik zoek", "op zoek", "we zoeken", "gezocht", "hiring", "vacature"];
 
   if (keywordTokens.length === 0) {
     return false;
@@ -421,8 +422,11 @@ function matchesPostIntent(post, keyword, phrase) {
   const requiredTokenCount = keywordTokens.length === 1 ? 1 : Math.max(2, Math.ceil(keywordTokens.length * 0.6));
   if (matchedTokenCount < requiredTokenCount) return false;
 
-  if (!normalizedPhrase) return true;
-  return normalizedText.includes(normalizedPhrase);
+  if (!normalizedPhrase) {
+    return intentIndicators.some((indicator) => normalizedText.includes(indicator));
+  }
+
+  return normalizedText.includes(normalizedPhrase) || intentIndicators.some((indicator) => normalizedText.includes(indicator));
 }
 
 async function scrapeLinkedInPosts({ keywords, location, searchPhrase, maxPostsPerKeyword }) {
