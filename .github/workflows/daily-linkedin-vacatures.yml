@@ -29,6 +29,8 @@ jobs:
           LINKEDIN_LOCATIONS: ${{ vars.LINKEDIN_LOCATIONS }}
           LINKEDIN_TIME_RANGE: ${{ vars.LINKEDIN_TIME_RANGE }}
           LINKEDIN_MAX_PAGES: ${{ vars.LINKEDIN_MAX_PAGES }}
+          LINKEDIN_POSTS_ENABLED: ${{ vars.LINKEDIN_POSTS_ENABLED }}
+          LINKEDIN_POSTS_MAX_RESULTS: ${{ vars.LINKEDIN_POSTS_MAX_RESULTS }}
           EMAIL_TO: suuz@studiobenedek.nl,tvanzolingen@gmail.com
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}

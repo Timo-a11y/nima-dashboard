@@ -5,8 +5,12 @@ const DEFAULT_KEYWORDS = "Appointment Setter";
 const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
 const DEFAULT_TIME_RANGE = "r86400"; // Last 24 hours on LinkedIn.
 const DEFAULT_SEARCH_LOCATIONS = ["United States", "Netherlands", "Belgium"];
+const DEFAULT_POSTS_ENABLED = true;
+const DEFAULT_POSTS_MAX_RESULTS = 20;
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
+const POST_SEARCH_DELAY_MS = 900;
+const POST_SEARCH_HINT = '"looking for" OR hiring OR "op zoek naar" OR "ik zoek"';
 
 function readEnv(name, fallback = "") {
   const value = process.env[name];
@@ -23,6 +27,17 @@ function readNumberEnv(name, fallback) {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed) || parsed < 1) return fallback;
   return parsed;
+}
+
+function readBooleanEnv(name, fallback) {
+  const value = readEnv(name, "");
+  if (!value) return fallback;
+
+  const normalized = value.toLowerCase();
+  if (["1", "true", "yes", "y", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "n", "off"].includes(normalized)) return false;
+
+  return fallback;
 }
 
 function requiredEnv(name) {
@@ -55,6 +70,24 @@ function getSearchLocations() {
   return [...DEFAULT_SEARCH_LOCATIONS];
 }
 
+function buildPostSearchTargets({ keywords, searchLocations }) {
+  const targets = [
+    {
+      label: "Global",
+      query: `site:linkedin.com/posts "${keywords}" (${POST_SEARCH_HINT})`,
+    },
+  ];
+
+  for (const location of searchLocations) {
+    targets.push({
+      label: location,
+      query: `site:linkedin.com/posts "${keywords}" "${location}" (${POST_SEARCH_HINT})`,
+    });
+  }
+
+  return targets;
+}
+
 function normalizeLinkedInUrl(input) {
   try {
     const parsed = new URL(input);
@@ -63,6 +96,33 @@ function normalizeLinkedInUrl(input) {
     return parsed.toString();
   } catch {
     return input;
+  }
+}
+
+function normalizeSearchResultUrl(input) {
+  if (!input) return "";
+
+  try {
+    const parsed = new URL(input, "https://duckduckgo.com");
+    const redirected = parsed.searchParams.get("uddg");
+    const candidate = redirected ? decodeURIComponent(redirected) : parsed.toString();
+    return normalizeLinkedInUrl(candidate);
+  } catch {
+    return input;
+  }
+}
+
+function isLikelyLinkedInPostUrl(input) {
+  try {
+    const parsed = new URL(input);
+    const hostname = parsed.hostname.replace(/^www\./, "");
+    if (!hostname.endsWith("linkedin.com")) {
+      return false;
+    }
+
+    return parsed.pathname.includes("/posts/") || parsed.pathname.includes("/feed/update/");
+  } catch {
+    return false;
   }
 }
 
@@ -139,6 +199,31 @@ function uniqueJobs(items) {
   return [...byLink.values()];
 }
 
+function uniquePosts(items) {
+  const byLink = new Map();
+
+  for (const item of items) {
+    const key = item.link.toLowerCase();
+
+    if (!byLink.has(key)) {
+      byLink.set(key, {
+        ...item,
+        sourceTargets: [...item.sourceTargets],
+      });
+      continue;
+    }
+
+    const existing = byLink.get(key);
+    const mergedTargets = new Set(existing.sourceTargets);
+    for (const sourceTarget of item.sourceTargets) {
+      mergedTargets.add(sourceTarget);
+    }
+    existing.sourceTargets = [...mergedTargets];
+  }
+
+  return [...byLink.values()];
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -188,31 +273,115 @@ async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPag
   return uniqueJobs(allJobs);
 }
 
-function buildEmailContent({ jobs, keywords, searchLocations }) {
+function extractPostsFromSearchHtml(html, sourceLabel) {
+  const $ = cheerio.load(html);
+  const posts = [];
+
+  $(".result").each((_, result) => {
+    const element = $(result);
+    const anchor = element.find("a.result__a").first();
+    const title = anchor.text().trim();
+    const href = anchor.attr("href") || "";
+    const link = normalizeSearchResultUrl(href);
+    const snippet = element.find(".result__snippet").text().trim();
+
+    if (!title || !link || !isLikelyLinkedInPostUrl(link)) {
+      return;
+    }
+
+    posts.push({
+      title,
+      snippet: snippet || "No snippet provided.",
+      link,
+      sourceTargets: sourceLabel ? [sourceLabel] : [],
+    });
+  });
+
+  return posts;
+}
+
+async function scrapeLinkedInPosts({ keywords, searchLocations, maxResults }) {
+  const headers = {
+    "User-Agent":
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,nl;q=0.8",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+  };
+
+  const searchTargets = buildPostSearchTargets({ keywords, searchLocations });
+  const allPosts = [];
+
+  for (const searchTarget of searchTargets) {
+    const params = new URLSearchParams({
+      q: searchTarget.query,
+    });
+    const url = `https://duckduckgo.com/html/?${params.toString()}`;
+    console.log(`[posts] Searching "${searchTarget.label}" with query: ${searchTarget.query}`);
+
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        console.warn(`[posts] Search failed for "${searchTarget.label}" with status ${response.status}.`);
+        continue;
+      }
+
+      const html = await response.text();
+      const posts = extractPostsFromSearchHtml(html, searchTarget.label);
+      console.log(`[posts] Query "${searchTarget.label}" returned ${posts.length} post candidates.`);
+      allPosts.push(...posts);
+    } catch (error) {
+      console.warn(
+        `[posts] Query "${searchTarget.label}" failed: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
+    }
+
+    if (uniquePosts(allPosts).length >= maxResults) {
+      break;
+    }
+
+    await sleep(POST_SEARCH_DELAY_MS);
+  }
+
+  return uniquePosts(allPosts).slice(0, maxResults);
+}
+
+function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
   const now = new Date().toISOString();
   const criteriaLine =
     searchLocations.length > 0 ? `${keywords} in ${searchLocations.join(", ")}` : keywords;
+  const jobsCount = jobs.length;
+  const postsCount = posts.length;
 
-  if (jobs.length === 0) {
+  const subject = `[LinkedIn Leads] ${jobsCount} vacatures + ${postsCount} posts voor "${criteriaLine}"`;
+
+  if (jobsCount === 0 && postsCount === 0) {
     return {
-      subject: `[LinkedIn Vacatures] Geen resultaten voor "${criteriaLine}"`,
+      subject,
       text: [
         `Dagelijkse LinkedIn check`,
         ``,
         `Zoekopdracht: ${criteriaLine}`,
         `Tijdstip: ${now}`,
         ``,
-        `Er zijn geen nieuwe vacatures gevonden in de ingestelde tijdsrange.`,
+        `Vacatures gevonden: 0`,
+        `Posts gevonden: 0`,
+        ``,
+        `Er zijn geen nieuwe vacatures of posts gevonden in de ingestelde tijdsrange.`,
       ].join("\n"),
       html: `
         <p><strong>Dagelijkse LinkedIn check</strong></p>
         <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-        <p>Er zijn geen nieuwe vacatures gevonden in de ingestelde tijdsrange.</p>
+        <p>Vacatures gevonden: <strong>0</strong><br/>Posts gevonden: <strong>0</strong></p>
+        <p>Er zijn geen nieuwe vacatures of posts gevonden in de ingestelde tijdsrange.</p>
       `,
     };
   }
 
-  const listText = jobs
+  const jobsText = jobs
     .map(
       (job, index) => {
         const sourceLocationsLine =
@@ -224,7 +393,7 @@ function buildEmailContent({ jobs, keywords, searchLocations }) {
     )
     .join("\n\n");
 
-  const listHtml = jobs
+  const jobsHtml = jobs
     .map(
       (job, index) => `
         <li style="margin-bottom:12px;">
@@ -240,20 +409,48 @@ function buildEmailContent({ jobs, keywords, searchLocations }) {
     )
     .join("");
 
+  const postsText = posts
+    .map(
+      (post, index) =>
+        `${index + 1}. ${post.title}\n   ${post.link}\n   Context: ${post.snippet}\n   Zoekgebied: ${post.sourceTargets.join(", ")}`
+    )
+    .join("\n\n");
+
+  const postsHtml = posts
+    .map(
+      (post, index) => `
+        <li style="margin-bottom:12px;">
+          <a href="${post.link}"><strong>${index + 1}. ${post.title}</strong></a><br/>
+          <em>Zoekgebied: ${post.sourceTargets.join(", ")}</em><br/>
+          Context: ${post.snippet}
+        </li>
+      `
+    )
+    .join("");
+
   return {
-    subject: `[LinkedIn Vacatures] ${jobs.length}x "${criteriaLine}" gevonden`,
+    subject,
     text: [
       `Dagelijkse LinkedIn check`,
       ``,
       `Zoekopdracht: ${criteriaLine}`,
       `Tijdstip: ${now}`,
       ``,
-      listText,
+      `Vacatures gevonden: ${jobsCount}`,
+      `Posts gevonden: ${postsCount}`,
+      ``,
+      jobsCount > 0 ? `=== Vacatures ===\n${jobsText}` : `=== Vacatures ===\nGeen vacatures gevonden.`,
+      ``,
+      postsCount > 0 ? `=== Posts (mensen zoeken/huren) ===\n${postsText}` : `=== Posts (mensen zoeken/huren) ===\nGeen relevante posts gevonden.`,
     ].join("\n"),
     html: `
       <p><strong>Dagelijkse LinkedIn check</strong></p>
       <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-      <ol>${listHtml}</ol>
+      <p>Vacatures gevonden: <strong>${jobsCount}</strong><br/>Posts gevonden: <strong>${postsCount}</strong></p>
+      <h3>Vacatures</h3>
+      ${jobsCount > 0 ? `<ol>${jobsHtml}</ol>` : `<p>Geen vacatures gevonden.</p>`}
+      <h3>Posts (mensen zoeken/huren)</h3>
+      ${postsCount > 0 ? `<ol>${postsHtml}</ol>` : `<p>Geen relevante posts gevonden.</p>`}
     `,
   };
 }
@@ -285,6 +482,8 @@ async function main() {
   const searchLocations = getSearchLocations();
   const timeRange = readEnv("LINKEDIN_TIME_RANGE", DEFAULT_TIME_RANGE);
   const maxPages = readNumberEnv("LINKEDIN_MAX_PAGES", 4);
+  const postsEnabled = readBooleanEnv("LINKEDIN_POSTS_ENABLED", DEFAULT_POSTS_ENABLED);
+  const postsMaxResults = readNumberEnv("LINKEDIN_POSTS_MAX_RESULTS", DEFAULT_POSTS_MAX_RESULTS);
 
   const smtpHost = requiredEnv("SMTP_HOST");
   const smtpPort = readNumberEnv("SMTP_PORT", 587);
@@ -298,6 +497,7 @@ async function main() {
   console.log(
     `[config] keywords="${keywords}" locations="${searchLocations.join(", ")}" maxPages=${maxPages}`
   );
+  console.log(`[config] postsEnabled=${postsEnabled} postsMaxResults=${postsMaxResults}`);
   console.log(`[config] email to="${to}" from="${from}"`);
 
   const jobs = await scrapeLinkedInJobs({
@@ -309,8 +509,22 @@ async function main() {
 
   console.log(`[linkedin] Total unique jobs found: ${jobs.length}`);
 
+  let posts = [];
+  if (postsEnabled) {
+    posts = await scrapeLinkedInPosts({
+      keywords,
+      searchLocations,
+      maxResults: postsMaxResults,
+    });
+  } else {
+    console.log(`[posts] Skipped because LINKEDIN_POSTS_ENABLED is disabled.`);
+  }
+
+  console.log(`[posts] Total unique post leads found: ${posts.length}`);
+
   const emailContent = buildEmailContent({
     jobs,
+    posts,
     keywords,
     searchLocations,
   });

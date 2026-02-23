@@ -4,6 +4,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures voor **"Appointment Setter"** ophaalt en mailt naar **suuz@studiobenedek.nl** en **tvanzolingen@gmail.com**.
 Standaard zoekt het script in **United States**, **Netherlands** en **Belgium**.
+Daarnaast zoekt het script ook in LinkedIn-posts op signalen zoals **"looking for"**, **"hiring"**, **"op zoek naar"** en **"ik zoek"** met je zoekterm.
 
 ### Hoe het werkt
 
@@ -29,6 +30,8 @@ Optionele **Variables**:
 - `LINKEDIN_LOCATION` (legacy single-location fallback)
 - `LINKEDIN_TIME_RANGE` (default script: `r86400`, laatste 24 uur)
 - `LINKEDIN_MAX_PAGES` (default script: `4`)
+- `LINKEDIN_POSTS_ENABLED` (default: `true`)
+- `LINKEDIN_POSTS_MAX_RESULTS` (default: `20`)
 - `EMAIL_FROM` (default: `SMTP_USER`)
 - `EMAIL_TO` (optioneel, meerdere ontvangers met komma's; default: `suuz@studiobenedek.nl,tvanzolingen@gmail.com`)
 
