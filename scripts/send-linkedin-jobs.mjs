@@ -13,8 +13,12 @@ const DEFAULT_LOCATION = "Nederland";
 const DEFAULT_RECIPIENTS = "tvanzolingen@gmail.com,a.sarhatlic@gmail.com";
 const DEFAULT_TIME_RANGE = "r864000"; // Last 10 days on LinkedIn.
 const DEFAULT_GEO_ID = "102890719"; // LinkedIn geoId for the Netherlands.
+const DEFAULT_INCLUDE_LINKEDIN_POSTS = true;
+const DEFAULT_POST_SEARCH_PHRASE = "ik zoek";
+const DEFAULT_POSTS_MAX_PER_KEYWORD = 8;
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
+const POST_REQUEST_DELAY_MS = 1000;
 const REPORT_TIME_ZONE = "Europe/Amsterdam";
 const DUTCH_LOCATION_MARKERS = [
   "netherlands",
@@ -74,6 +78,15 @@ function readNumberEnv(name, fallback) {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed) || parsed < 1) return fallback;
   return parsed;
+}
+
+function readBooleanEnv(name, fallback) {
+  const value = readEnv(name, "");
+  if (!value) return fallback;
+  const normalized = value.toLowerCase();
+  if (["1", "true", "yes", "y"].includes(normalized)) return true;
+  if (["0", "false", "no", "n"].includes(normalized)) return false;
+  return fallback;
 }
 
 function requiredEnv(name) {
@@ -246,6 +259,176 @@ function keepOnlyDutchJobs(jobs) {
   };
 }
 
+function buildDuckDuckGoSearchUrl(query) {
+  return `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+}
+
+function unwrapDuckDuckGoRedirect(rawHref) {
+  if (!rawHref) return "";
+  const href = rawHref.startsWith("//") ? `https:${rawHref}` : rawHref;
+
+  try {
+    const parsed = new URL(href);
+    const target = parsed.searchParams.get("uddg");
+    return normalizeLinkedInUrl(target ? decodeURIComponent(target) : href);
+  } catch {
+    return normalizeLinkedInUrl(href);
+  }
+}
+
+function parseActivityDateFromLinkedInUrl(url) {
+  const match = url.match(/(?:activity-|activity:)(\d{10,})/i);
+  if (!match) return null;
+
+  try {
+    const activityId = BigInt(match[1]);
+    const timestampMs = Number(activityId >> 22n);
+    if (!Number.isFinite(timestampMs) || timestampMs <= 0) return null;
+
+    const date = new Date(timestampMs);
+    return Number.isNaN(date.getTime()) ? null : date;
+  } catch {
+    return null;
+  }
+}
+
+function formatDateTimeForDisplay(date) {
+  return date.toLocaleString("nl-NL", {
+    timeZone: REPORT_TIME_ZONE,
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+}
+
+function extractPostsFromDuckDuckGoHtml(html, keyword) {
+  const $ = cheerio.load(html);
+  const posts = [];
+
+  $("a.result__a").each((_, anchor) => {
+    const element = $(anchor);
+    const card = element.closest(".result");
+    const titleRaw = element.text().trim();
+    const title = titleRaw.replace(/\s*-\s*LinkedIn\s*$/i, "").trim();
+    const snippet = card.find(".result__snippet").text().trim();
+    const href = unwrapDuckDuckGoRedirect(element.attr("href") || "");
+
+    if (!href || !/linkedin\.com\/posts\//i.test(href)) {
+      return;
+    }
+
+    const postedDate = parseActivityDateFromLinkedInUrl(href);
+    posts.push({
+      title: title || "LinkedIn post",
+      snippet,
+      link: href,
+      postedAt: postedDate ? formatDateTimeForDisplay(postedDate) : "Unknown date",
+      postedAtDatetime: postedDate ? postedDate.toISOString() : "",
+      location: "Nederland",
+      matchedKeywords: [keyword],
+      sourceType: "post",
+    });
+  });
+
+  return posts;
+}
+
+function mergePostsByLink(items) {
+  const byLink = new Map();
+
+  for (const item of items) {
+    const key = item.link.toLowerCase();
+    const existing = byLink.get(key);
+
+    if (!existing) {
+      byLink.set(key, {
+        ...item,
+        matchedKeywords: [...new Set(item.matchedKeywords || [])],
+      });
+      continue;
+    }
+
+    const mergedKeywords = new Set([...(existing.matchedKeywords || []), ...(item.matchedKeywords || [])]);
+    existing.matchedKeywords = Array.from(mergedKeywords);
+
+    if ((!existing.snippet || existing.snippet.length < 20) && item.snippet) {
+      existing.snippet = item.snippet;
+    }
+    if ((!existing.postedAtDatetime || existing.postedAtDatetime === "Unknown date") && item.postedAtDatetime) {
+      existing.postedAtDatetime = item.postedAtDatetime;
+    }
+    if ((!existing.postedAt || existing.postedAt === "Unknown date") && item.postedAt) {
+      existing.postedAt = item.postedAt;
+    }
+  }
+
+  return Array.from(byLink.values());
+}
+
+function isLikelyDutchPost(post) {
+  try {
+    const host = new URL(post.link).hostname.toLowerCase();
+    if (host === "nl.linkedin.com") {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  const combined = normalizeForLocationMatch(`${post.title || ""} ${post.snippet || ""}`);
+  return DUTCH_LOCATION_MARKERS.some((marker) => combined.includes(marker));
+}
+
+function matchesPostIntent(post, keyword, phrase) {
+  const normalizedText = normalizeForLocationMatch(`${post.title || ""} ${post.snippet || ""}`);
+  const normalizedKeyword = normalizeForLocationMatch(keyword);
+  const normalizedPhrase = normalizeForLocationMatch(phrase);
+
+  if (!normalizedText.includes(normalizedKeyword)) return false;
+  if (!normalizedPhrase) return true;
+  return normalizedText.includes(normalizedPhrase);
+}
+
+async function scrapeLinkedInPosts({ keywords, location, searchPhrase, maxPostsPerKeyword }) {
+  const headers = {
+    "User-Agent":
+      "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9,nl;q=0.8",
+    "Cache-Control": "no-cache",
+    Pragma: "no-cache",
+  };
+
+  const allPosts = [];
+
+  for (const keyword of keywords) {
+    const query = `site:linkedin.com/posts "${searchPhrase}" "${keyword}" ${location}`.trim();
+    const url = buildDuckDuckGoSearchUrl(query);
+    console.log(`[posts] Searching posts for keyword "${keyword}" using: ${url}`);
+
+    try {
+      const response = await fetch(url, { headers });
+      if (!response.ok) {
+        console.warn(`[posts] DuckDuckGo request failed (${response.status}) for keyword "${keyword}".`);
+        continue;
+      }
+
+      const html = await response.text();
+      const extracted = extractPostsFromDuckDuckGoHtml(html, keyword);
+      const filtered = extracted.filter((post) => isLikelyDutchPost(post) && matchesPostIntent(post, keyword, searchPhrase));
+      const limited = filtered.slice(0, maxPostsPerKeyword);
+
+      allPosts.push(...limited);
+      console.log(`[posts] Keyword "${keyword}" yielded ${limited.length}/${filtered.length} relevant posts.`);
+    } catch (error) {
+      console.warn(`[posts] Failed to scrape posts for keyword "${keyword}": ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    await sleep(POST_REQUEST_DELAY_MS);
+  }
+
+  return mergePostsByLink(allPosts);
+}
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -349,8 +532,17 @@ function parseRelativeDate(raw, now) {
   return null;
 }
 
-function parsePostedDate(job, now) {
-  const candidates = [job.postedAtDatetime, job.postedAt];
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function parsePostedDate(item, now) {
+  const candidates = [item.postedAtDatetime, item.postedAt];
 
   for (const candidateRaw of candidates) {
     const candidate = (candidateRaw || "").trim();
@@ -366,10 +558,10 @@ function parsePostedDate(job, now) {
     }
   }
 
-  return parseRelativeDate(job.postedAt || "", now);
+  return parseRelativeDate(item.postedAt || "", now);
 }
 
-function sortJobsNewestFirst(items, now) {
+function sortItemsNewestFirst(items, now) {
   return [...items].sort((left, right) => {
     const leftDate = parsePostedDate(left, now);
     const rightDate = parsePostedDate(right, now);
@@ -383,49 +575,50 @@ function sortJobsNewestFirst(items, now) {
   });
 }
 
-function groupJobsByDate(jobs, now) {
-  const todayJobs = [];
-  const recentJobs = [];
-  const otherJobs = [];
+function groupItemsByDate(items, now, { includeUnknownInRecent = true } = {}) {
+  const todayItems = [];
+  const recentItems = [];
+  const otherItems = [];
 
   const nowDayNumber = dateKeyToDayNumber(formatDateKey(now));
 
-  for (const job of jobs) {
-    const parsedDate = parsePostedDate(job, now);
+  for (const item of items) {
+    const parsedDate = parsePostedDate(item, now);
     if (!parsedDate) {
-      recentJobs.push(job);
+      if (includeUnknownInRecent) {
+        recentItems.push(item);
+      } else {
+        otherItems.push(item);
+      }
       continue;
     }
 
-    const jobDayNumber = dateKeyToDayNumber(formatDateKey(parsedDate));
-    const diffDays = nowDayNumber - jobDayNumber;
+    const itemDayNumber = dateKeyToDayNumber(formatDateKey(parsedDate));
+    const diffDays = nowDayNumber - itemDayNumber;
 
     if (diffDays <= 0) {
-      todayJobs.push(job);
+      todayItems.push(item);
     } else if (diffDays <= 10) {
-      recentJobs.push(job);
+      recentItems.push(item);
     } else {
-      otherJobs.push(job);
+      otherItems.push(item);
     }
   }
 
   return {
-    todayJobs: sortJobsNewestFirst(todayJobs, now),
-    recentJobs: sortJobsNewestFirst(recentJobs, now),
-    otherJobs: sortJobsNewestFirst(otherJobs, now),
+    todayItems: sortItemsNewestFirst(todayItems, now),
+    recentItems: sortItemsNewestFirst(recentItems, now),
+    otherItems: sortItemsNewestFirst(otherItems, now),
   };
 }
 
-function escapeHtml(value) {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+function truncateText(value, maxLength = 220) {
+  const normalized = String(value || "").replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 1)}…`;
 }
 
-function formatTextList(jobs) {
+function formatTextVacancyList(jobs) {
   if (jobs.length === 0) {
     return "- Geen vacatures gevonden.";
   }
@@ -441,7 +634,7 @@ function formatTextList(jobs) {
     .join("\n\n");
 }
 
-function formatHtmlList(jobs) {
+function formatHtmlVacancyList(jobs) {
   if (jobs.length === 0) {
     return "<p>Geen vacatures gevonden.</p>";
   }
@@ -466,80 +659,137 @@ function formatHtmlList(jobs) {
   return `<ol>${listHtml}</ol>`;
 }
 
-function buildEmailContent({ jobs, keywords, location }) {
+function formatTextPostList(posts) {
+  if (posts.length === 0) {
+    return "- Geen posts gevonden.";
+  }
+
+  return posts
+    .map((post, index) => {
+      const keywordText =
+        post.matchedKeywords && post.matchedKeywords.length > 0
+          ? `\n   Match op: ${post.matchedKeywords.join(", ")}`
+          : "";
+      const snippetText = post.snippet ? `\n   Snippet: ${truncateText(post.snippet, 260)}` : "";
+      return `${index + 1}. ${post.title}\n   ${post.link}\n   Geplaatst: ${post.postedAt}${keywordText}${snippetText}`;
+    })
+    .join("\n\n");
+}
+
+function formatHtmlPostList(posts) {
+  if (posts.length === 0) {
+    return "<p>Geen posts gevonden.</p>";
+  }
+
+  const listHtml = posts
+    .map((post, index) => {
+      const keywordHtml =
+        post.matchedKeywords && post.matchedKeywords.length > 0
+          ? `<small>Match op: ${escapeHtml(post.matchedKeywords.join(", "))}</small><br/>`
+          : "";
+      const snippetHtml = post.snippet ? `<small>${escapeHtml(truncateText(post.snippet, 260))}</small><br/>` : "";
+      return `
+        <li style="margin-bottom:12px;">
+          <a href="${escapeHtml(post.link)}"><strong>${index + 1}. ${escapeHtml(post.title)}</strong></a><br/>
+          Geplaatst: ${escapeHtml(post.postedAt)}<br/>
+          ${keywordHtml}
+          ${snippetHtml}
+        </li>
+      `;
+    })
+    .join("");
+
+  return `<ol>${listHtml}</ol>`;
+}
+
+function buildEmailContent({ jobs, posts, keywords, location, postSearchPhrase }) {
   const now = new Date();
   const generatedAt = now.toLocaleString("nl-NL", {
     timeZone: REPORT_TIME_ZONE,
     dateStyle: "short",
     timeStyle: "medium",
   });
-  const { todayJobs, recentJobs, otherJobs } = groupJobsByDate(jobs, now);
-  const totalInMainSections = todayJobs.length + recentJobs.length;
+  const groupedJobs = groupItemsByDate(jobs, now, { includeUnknownInRecent: true });
+  const groupedPosts = groupItemsByDate(posts, now, { includeUnknownInRecent: false });
+  const todayJobs = groupedJobs.todayItems;
+  const recentJobs = groupedJobs.recentItems;
+  const todayPosts = groupedPosts.todayItems;
+  const recentPosts = groupedPosts.recentItems;
+  const totalInMainSections = todayJobs.length + recentJobs.length + todayPosts.length + recentPosts.length;
 
-  if (totalInMainSections === 0 && otherJobs.length === 0) {
+  if (totalInMainSections === 0) {
     return {
       subject: `[LinkedIn Marketing Vacatures] Geen resultaten voor "${location}"`,
       text: [
         `Dagelijkse LinkedIn check`,
         ``,
         `Zoekopdrachten: ${keywords.join(", ")}`,
+        `Post-signaal: "${postSearchPhrase}"`,
         `Locatie: ${location || "Alle locaties"}`,
         `Tijdstip: ${generatedAt} (${REPORT_TIME_ZONE})`,
         ``,
-        `Er zijn geen vacatures gevonden in de laatste 10 dagen.`,
+        `Er zijn geen vacatures of relevante posts gevonden in de laatste 10 dagen.`,
       ].join("\n"),
       html: `
         <p><strong>Dagelijkse LinkedIn check</strong></p>
         <p>Zoekopdrachten: <strong>${escapeHtml(keywords.join(", "))}</strong><br/>Locatie: <strong>${escapeHtml(
           location || "Alle locaties"
-        )}</strong><br/>Tijdstip: ${escapeHtml(generatedAt)} (${REPORT_TIME_ZONE})</p>
-        <p>Er zijn geen vacatures gevonden in de laatste 10 dagen.</p>
+        )}</strong><br/>Post-signaal: <strong>${escapeHtml(postSearchPhrase)}</strong><br/>Tijdstip: ${escapeHtml(
+          generatedAt
+        )} (${REPORT_TIME_ZONE})</p>
+        <p>Er zijn geen vacatures of relevante posts gevonden in de laatste 10 dagen.</p>
       `,
     };
   }
 
-  const todayText = formatTextList(todayJobs);
-  const recentText = formatTextList(recentJobs);
-  const otherText = formatTextList(otherJobs);
+  const todayJobsText = formatTextVacancyList(todayJobs);
+  const recentJobsText = formatTextVacancyList(recentJobs);
+  const todayPostsText = formatTextPostList(todayPosts);
+  const recentPostsText = formatTextPostList(recentPosts);
 
-  const todayHtml = formatHtmlList(todayJobs);
-  const recentHtml = formatHtmlList(recentJobs);
-  const otherHtml = formatHtmlList(otherJobs);
+  const todayJobsHtml = formatHtmlVacancyList(todayJobs);
+  const recentJobsHtml = formatHtmlVacancyList(recentJobs);
+  const todayPostsHtml = formatHtmlPostList(todayPosts);
+  const recentPostsHtml = formatHtmlPostList(recentPosts);
 
   return {
-    subject: `[LinkedIn Marketing Vacatures] Vandaag: ${todayJobs.length}, Eerder (1-10 dagen): ${recentJobs.length}`,
+    subject: `[LinkedIn Marketing] Vacatures vandaag: ${todayJobs.length}, Posts vandaag: ${todayPosts.length}`,
     text: [
       `Dagelijkse LinkedIn check`,
       ``,
       `Zoekopdrachten: ${keywords.join(", ")}`,
+      `Post-signaal: "${postSearchPhrase}"`,
       `Locatie: ${location || "Alle locaties"}`,
       `Tijdstip: ${generatedAt} (${REPORT_TIME_ZONE})`,
       ``,
       `Vacatures van vandaag (${todayJobs.length})`,
-      todayText,
+      todayJobsText,
       ``,
-      `Posts/vacatures van eerder die week t/m 10 dagen geleden (${recentJobs.length})`,
-      recentText,
-      ...(otherJobs.length > 0
-        ? ["", `Overige resultaten (${otherJobs.length})`, otherText]
-        : []),
+      `Posts van vandaag (${todayPosts.length})`,
+      todayPostsText,
+      ``,
+      `Vacatures van eerder die week t/m 10 dagen geleden (${recentJobs.length})`,
+      recentJobsText,
+      ``,
+      `Posts van eerder die week t/m 10 dagen geleden (${recentPosts.length})`,
+      recentPostsText,
     ].join("\n"),
     html: `
       <p><strong>Dagelijkse LinkedIn check</strong></p>
       <p>
         Zoekopdrachten: <strong>${escapeHtml(keywords.join(", "))}</strong><br/>
+        Post-signaal: <strong>${escapeHtml(postSearchPhrase)}</strong><br/>
         Locatie: <strong>${escapeHtml(location || "Alle locaties")}</strong><br/>
         Tijdstip: ${escapeHtml(generatedAt)} (${REPORT_TIME_ZONE})
       </p>
       <h3>Vacatures van vandaag (${todayJobs.length})</h3>
-      ${todayHtml}
-      <h3>Posts/vacatures van eerder die week t/m 10 dagen geleden (${recentJobs.length})</h3>
-      ${recentHtml}
-      ${
-        otherJobs.length > 0
-          ? `<h3>Overige resultaten (${otherJobs.length})</h3>${otherHtml}`
-          : ""
-      }
+      ${todayJobsHtml}
+      <h3>Posts van vandaag (${todayPosts.length})</h3>
+      ${todayPostsHtml}
+      <h3>Vacatures van eerder die week t/m 10 dagen geleden (${recentJobs.length})</h3>
+      ${recentJobsHtml}
+      <h3>Posts van eerder die week t/m 10 dagen geleden (${recentPosts.length})</h3>
+      ${recentPostsHtml}
     `,
   };
 }
@@ -577,6 +827,9 @@ async function main() {
   const timeRange = readEnv("LINKEDIN_TIME_RANGE", DEFAULT_TIME_RANGE);
   const maxPages = readNumberEnv("LINKEDIN_MAX_PAGES", 4);
   const geoId = readEnv("LINKEDIN_GEO_ID", DEFAULT_GEO_ID);
+  const includeLinkedInPosts = readBooleanEnv("LINKEDIN_INCLUDE_POSTS", DEFAULT_INCLUDE_LINKEDIN_POSTS);
+  const postSearchPhrase = readEnv("LINKEDIN_POST_SEARCH_PHRASE", DEFAULT_POST_SEARCH_PHRASE);
+  const postMaxPerKeyword = readNumberEnv("LINKEDIN_POST_MAX_PER_KEYWORD", DEFAULT_POSTS_MAX_PER_KEYWORD);
 
   const smtpHost = requiredEnv("SMTP_HOST");
   const smtpPort = readNumberEnv("SMTP_PORT", 587);
@@ -589,6 +842,9 @@ async function main() {
 
   console.log(
     `[config] keywords="${keywords.join(" | ")}" location="${location || "ANY"}" geoId="${geoId || "NONE"}" maxPages=${maxPages}`
+  );
+  console.log(
+    `[config] includePosts=${includeLinkedInPosts} postPhrase="${postSearchPhrase}" postMaxPerKeyword=${postMaxPerKeyword}`
   );
   console.log(`[config] email to="${to}" from="${from}"`);
 
@@ -619,10 +875,23 @@ async function main() {
 
   console.log(`[linkedin] Total unique jobs found: ${jobs.length}`);
 
+  let posts = [];
+  if (includeLinkedInPosts) {
+    posts = await scrapeLinkedInPosts({
+      keywords,
+      location,
+      searchPhrase: postSearchPhrase,
+      maxPostsPerKeyword: postMaxPerKeyword,
+    });
+  }
+  console.log(`[posts] Total unique posts found: ${posts.length}`);
+
   const emailContent = buildEmailContent({
     jobs,
+    posts,
     keywords,
     location,
+    postSearchPhrase,
   });
 
   await sendEmail({

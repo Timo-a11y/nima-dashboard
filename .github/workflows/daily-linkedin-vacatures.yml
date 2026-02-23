@@ -30,6 +30,9 @@ jobs:
           LINKEDIN_GEO_ID: 102890719
           LINKEDIN_TIME_RANGE: r864000
           LINKEDIN_MAX_PAGES: ${{ vars.LINKEDIN_MAX_PAGES }}
+          LINKEDIN_INCLUDE_POSTS: "true"
+          LINKEDIN_POST_SEARCH_PHRASE: ik zoek
+          LINKEDIN_POST_MAX_PER_KEYWORD: "8"
           EMAIL_TO: tvanzolingen@gmail.com,a.sarhatlic@gmail.com
           EMAIL_FROM: ${{ vars.EMAIL_FROM }}
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
