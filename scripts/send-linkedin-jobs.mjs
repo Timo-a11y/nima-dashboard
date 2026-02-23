@@ -3,14 +3,36 @@ import nodemailer from "nodemailer";
 
 const DEFAULT_KEYWORDS = "Appointment Setter";
 const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
-const DEFAULT_TIME_RANGE = "r86400"; // Last 24 hours on LinkedIn.
-const DEFAULT_SEARCH_LOCATIONS = ["United States", "Netherlands", "Belgium"];
+const DEFAULT_TIME_RANGE = "r864000"; // Last 10 days on LinkedIn.
+const DEFAULT_SEARCH_LOCATIONS = ["Netherlands", "Belgium", "United States"];
 const DEFAULT_POSTS_ENABLED = true;
 const DEFAULT_POSTS_MAX_RESULTS = 20;
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
 const POST_SEARCH_DELAY_MS = 900;
 const POST_SEARCH_HINT = '"looking for" OR hiring OR "op zoek naar" OR "ik zoek"';
+const SIMILAR_TITLE_PATTERNS = [
+  "sales development representative",
+  "sdr",
+  "lead generator",
+  "business development representative",
+  "inside sales",
+  "account executive",
+  "cold caller",
+  "acquisiteur",
+  "telemarketer",
+];
+
+const REGION_PRIORITY = new Map([
+  ["netherlands", 0],
+  ["nederland", 0],
+  ["belgium", 1],
+  ["belgie", 1],
+  ["united states", 2],
+  ["usa", 2],
+  ["us", 2],
+  ["global", 3],
+]);
 
 function readEnv(name, fallback = "") {
   const value = process.env[name];
@@ -68,6 +90,234 @@ function getSearchLocations() {
   }
 
   return [...DEFAULT_SEARCH_LOCATIONS];
+}
+
+function dateFromRelativeParts(amount, unit) {
+  const now = new Date();
+  const loweredUnit = unit.toLowerCase();
+  const numericAmount = Number.parseInt(amount, 10);
+  if (Number.isNaN(numericAmount) || numericAmount < 0) {
+    return null;
+  }
+
+  const multipliers = {
+    second: 1000,
+    seconds: 1000,
+    sec: 1000,
+    secs: 1000,
+    minuut: 60 * 1000,
+    minuten: 60 * 1000,
+    minute: 60 * 1000,
+    minutes: 60 * 1000,
+    min: 60 * 1000,
+    mins: 60 * 1000,
+    uur: 60 * 60 * 1000,
+    uren: 60 * 60 * 1000,
+    hour: 60 * 60 * 1000,
+    hours: 60 * 60 * 1000,
+    hr: 60 * 60 * 1000,
+    hrs: 60 * 60 * 1000,
+    dag: 24 * 60 * 60 * 1000,
+    dagen: 24 * 60 * 60 * 1000,
+    day: 24 * 60 * 60 * 1000,
+    days: 24 * 60 * 60 * 1000,
+    week: 7 * 24 * 60 * 60 * 1000,
+    weken: 7 * 24 * 60 * 60 * 1000,
+    weeks: 7 * 24 * 60 * 60 * 1000,
+    month: 30 * 24 * 60 * 60 * 1000,
+    months: 30 * 24 * 60 * 60 * 1000,
+    maand: 30 * 24 * 60 * 60 * 1000,
+    maanden: 30 * 24 * 60 * 60 * 1000,
+    year: 365 * 24 * 60 * 60 * 1000,
+    years: 365 * 24 * 60 * 60 * 1000,
+    jaar: 365 * 24 * 60 * 60 * 1000,
+    jaren: 365 * 24 * 60 * 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+    w: 7 * 24 * 60 * 60 * 1000,
+  };
+
+  const ms = multipliers[loweredUnit];
+  if (!ms) return null;
+
+  return new Date(now.getTime() - numericAmount * ms);
+}
+
+function parseFlexibleDate(input) {
+  if (!input) return null;
+
+  const raw = input.trim();
+  if (!raw) return null;
+
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct;
+  }
+
+  const lowered = raw.toLowerCase();
+  if (
+    lowered.includes("today") ||
+    lowered.includes("vandaag") ||
+    lowered.includes("just now") ||
+    lowered.includes("zojuist")
+  ) {
+    return new Date();
+  }
+
+  if (lowered.includes("yesterday") || lowered.includes("gisteren")) {
+    return new Date(Date.now() - 24 * 60 * 60 * 1000);
+  }
+
+  const verboseRelativeMatch = lowered.match(
+    /(\d+)\s*(seconds?|secs?|sec|minutes?|mins?|min|hours?|hrs?|hr|days?|day|weeks?|week|months?|month|years?|year|minuut|minuten|uur|uren|dag|dagen|weken|week|maand|maanden|jaar|jaren)\b/
+  );
+  if (verboseRelativeMatch) {
+    return dateFromRelativeParts(verboseRelativeMatch[1], verboseRelativeMatch[2]);
+  }
+
+  const shortRelativeMatch = lowered.match(/(^|\s)(\d+)\s*([hdw])(?=\s|$)/);
+  if (shortRelativeMatch) {
+    return dateFromRelativeParts(shortRelativeMatch[2], shortRelativeMatch[3]);
+  }
+
+  return null;
+}
+
+function getDayDifferenceFromNow(date) {
+  const now = new Date();
+  const utcNowStart = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const utcDateStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+  const msDiff = utcNowStart - utcDateStart;
+  return Math.floor(msDiff / (24 * 60 * 60 * 1000));
+}
+
+function getRecencyBucket(date) {
+  if (!date) return "unknown";
+  const diffDays = getDayDifferenceFromNow(date);
+
+  if (diffDays <= 0) return "today";
+  if (diffDays <= 10) return "last10days";
+  return "older";
+}
+
+function getBestRegionPriority(sourceLabels) {
+  if (!Array.isArray(sourceLabels) || sourceLabels.length === 0) {
+    return 99;
+  }
+
+  let best = 99;
+  for (const label of sourceLabels) {
+    const lowered = label.toLowerCase();
+
+    for (const [regionFragment, priority] of REGION_PRIORITY.entries()) {
+      if (lowered.includes(regionFragment)) {
+        best = Math.min(best, priority);
+      }
+    }
+  }
+
+  return best;
+}
+
+function getTitlePriority(title, keywords) {
+  const loweredTitle = title.toLowerCase();
+  const loweredKeywords = keywords.toLowerCase();
+
+  if (loweredTitle.includes(loweredKeywords)) {
+    return 0;
+  }
+
+  const keywordTokens = loweredKeywords
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+
+  const matches = keywordTokens.filter((token) => loweredTitle.includes(token)).length;
+  if (keywordTokens.length > 0 && matches === keywordTokens.length) {
+    return 1;
+  }
+
+  if (matches > 0) {
+    return 2;
+  }
+
+  if (SIMILAR_TITLE_PATTERNS.some((pattern) => loweredTitle.includes(pattern))) {
+    return 3;
+  }
+
+  return 4;
+}
+
+function sortByPriority(items, { keywords, getSourceLabels, getDateInput }) {
+  const enriched = items
+    .map((item) => {
+      const parsedDate = parseFlexibleDate(getDateInput(item));
+      const recencyBucket = getRecencyBucket(parsedDate);
+      const regionPriority = getBestRegionPriority(getSourceLabels(item));
+      const titlePriority = getTitlePriority(item.title, keywords);
+
+      return {
+        ...item,
+        parsedDate,
+        recencyBucket,
+        regionPriority,
+        titlePriority,
+      };
+    })
+    .filter((item) => item.recencyBucket !== "older");
+
+  return enriched.sort((a, b) => {
+    const bucketPriority = {
+      today: 0,
+      last10days: 1,
+      unknown: 2,
+      older: 3,
+    };
+
+    if (bucketPriority[a.recencyBucket] !== bucketPriority[b.recencyBucket]) {
+      return bucketPriority[a.recencyBucket] - bucketPriority[b.recencyBucket];
+    }
+
+    if (a.regionPriority !== b.regionPriority) {
+      return a.regionPriority - b.regionPriority;
+    }
+
+    if (a.titlePriority !== b.titlePriority) {
+      return a.titlePriority - b.titlePriority;
+    }
+
+    const aTime = a.parsedDate ? a.parsedDate.getTime() : 0;
+    const bTime = b.parsedDate ? b.parsedDate.getTime() : 0;
+    if (aTime !== bTime) {
+      return bTime - aTime;
+    }
+
+    return a.title.localeCompare(b.title);
+  });
+}
+
+function splitByRecency(items) {
+  const groups = {
+    today: [],
+    last10days: [],
+    unknown: [],
+  };
+
+  for (const item of items) {
+    if (item.recencyBucket === "today") {
+      groups.today.push(item);
+      continue;
+    }
+
+    if (item.recencyBucket === "last10days") {
+      groups.last10days.push(item);
+      continue;
+    }
+
+    groups.unknown.push(item);
+  }
+
+  return groups;
 }
 
 function buildPostSearchTargets({ keywords, searchLocations }) {
@@ -349,14 +599,69 @@ async function scrapeLinkedInPosts({ keywords, searchLocations, maxResults }) {
   return uniquePosts(allPosts).slice(0, maxResults);
 }
 
+function renderGroupedTextSection(title, groupedItems, renderItem) {
+  const lines = [title];
+  const appendGroup = (groupTitle, items) => {
+    lines.push(groupTitle);
+    if (items.length === 0) {
+      lines.push("Geen resultaten.");
+      lines.push("");
+      return;
+    }
+
+    items.forEach((item, index) => {
+      lines.push(renderItem(item, index + 1));
+      lines.push("");
+    });
+  };
+
+  appendGroup("Vandaag", groupedItems.today);
+  appendGroup("Tot 10 dagen geleden", groupedItems.last10days);
+  appendGroup("Onbekende datum", groupedItems.unknown);
+  return lines.join("\n").trim();
+}
+
+function renderGroupedHtmlSection(title, groupedItems, renderItem) {
+  const renderGroup = (groupTitle, items) => {
+    if (items.length === 0) {
+      return `<h5>${groupTitle}</h5><p>Geen resultaten.</p>`;
+    }
+
+    const listHtml = items.map((item, index) => renderItem(item, index + 1)).join("");
+    return `<h5>${groupTitle}</h5><ol>${listHtml}</ol>`;
+  };
+
+  return `
+    <h3>${title}</h3>
+    ${renderGroup("Vandaag", groupedItems.today)}
+    ${renderGroup("Tot 10 dagen geleden", groupedItems.last10days)}
+    ${renderGroup("Onbekende datum", groupedItems.unknown)}
+  `;
+}
+
 function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
   const now = new Date().toISOString();
   const criteriaLine =
     searchLocations.length > 0 ? `${keywords} in ${searchLocations.join(", ")}` : keywords;
-  const jobsCount = jobs.length;
-  const postsCount = posts.length;
 
-  const subject = `[LinkedIn Leads] ${jobsCount} vacatures + ${postsCount} posts voor "${criteriaLine}"`;
+  const sortedJobs = sortByPriority(jobs, {
+    keywords,
+    getSourceLabels: (job) => job.sourceSearchLocations || [],
+    getDateInput: (job) => job.postedAt || "",
+  });
+  const sortedPosts = sortByPriority(posts, {
+    keywords,
+    getSourceLabels: (post) => post.sourceTargets || [],
+    getDateInput: (post) => `${post.snippet || ""} ${post.title || ""}`,
+  });
+
+  const jobsByRecency = splitByRecency(sortedJobs);
+  const postsByRecency = splitByRecency(sortedPosts);
+
+  const jobsCount = sortedJobs.length;
+  const postsCount = sortedPosts.length;
+
+  const subject = `[LinkedIn Leads] Vandaag: ${jobsByRecency.today.length} vacatures / ${postsByRecency.today.length} posts · 10d: ${jobsByRecency.last10days.length} vacatures / ${postsByRecency.last10days.length} posts`;
 
   if (jobsCount === 0 && postsCount === 0) {
     return {
@@ -367,66 +672,56 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
         `Zoekopdracht: ${criteriaLine}`,
         `Tijdstip: ${now}`,
         ``,
-        `Vacatures gevonden: 0`,
-        `Posts gevonden: 0`,
-        ``,
-        `Er zijn geen nieuwe vacatures of posts gevonden in de ingestelde tijdsrange.`,
+        `Geen vacatures of posts gevonden voor vandaag en de laatste 10 dagen.`,
       ].join("\n"),
       html: `
         <p><strong>Dagelijkse LinkedIn check</strong></p>
         <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-        <p>Vacatures gevonden: <strong>0</strong><br/>Posts gevonden: <strong>0</strong></p>
-        <p>Er zijn geen nieuwe vacatures of posts gevonden in de ingestelde tijdsrange.</p>
+        <p>Geen vacatures of posts gevonden voor vandaag en de laatste 10 dagen.</p>
       `,
     };
   }
 
-  const jobsText = jobs
-    .map(
-      (job, index) => {
-        const sourceLocationsLine =
-          job.sourceSearchLocations.length > 0
-            ? `\n   Zoekregio: ${job.sourceSearchLocations.join(", ")}`
-            : "";
-        return `${index + 1}. ${job.title} — ${job.company} (${job.location})\n   ${job.link}\n   Geplaatst: ${job.postedAt}${sourceLocationsLine}`;
-      }
-    )
-    .join("\n\n");
+  const jobsTextSection = renderGroupedTextSection("=== Vacatures ===", jobsByRecency, (job, index) => {
+    const sourceLine =
+      job.sourceSearchLocations && job.sourceSearchLocations.length > 0
+        ? ` | Zoekregio: ${job.sourceSearchLocations.join(", ")}`
+        : "";
+    return `${index}. ${job.title} — ${job.company} (${job.location})\n   ${job.link}\n   Geplaatst: ${job.postedAt}${sourceLine}`;
+  });
 
-  const jobsHtml = jobs
-    .map(
-      (job, index) => `
-        <li style="margin-bottom:12px;">
-          <a href="${job.link}"><strong>${index + 1}. ${job.title}</strong></a><br/>
-          ${job.company} &middot; ${job.location}<br/>
-          Geplaatst: ${job.postedAt}${
-            job.sourceSearchLocations.length > 0
-              ? `<br/><em>Zoekregio: ${job.sourceSearchLocations.join(", ")}</em>`
-              : ""
-          }
-        </li>
-      `
-    )
-    .join("");
+  const postsTextSection = renderGroupedTextSection(
+    "=== Posts (mensen zoeken/huren) ===",
+    postsByRecency,
+    (post, index) =>
+      `${index}. ${post.title}\n   ${post.link}\n   Context: ${post.snippet}\n   Zoekgebied: ${(post.sourceTargets || []).join(", ")}`
+  );
 
-  const postsText = posts
-    .map(
-      (post, index) =>
-        `${index + 1}. ${post.title}\n   ${post.link}\n   Context: ${post.snippet}\n   Zoekgebied: ${post.sourceTargets.join(", ")}`
-    )
-    .join("\n\n");
+  const jobsHtmlSection = renderGroupedHtmlSection("Vacatures", jobsByRecency, (job, index) => {
+    const sourceLine =
+      job.sourceSearchLocations && job.sourceSearchLocations.length > 0
+        ? `<br/><em>Zoekregio: ${job.sourceSearchLocations.join(", ")}</em>`
+        : "";
+    return `
+      <li style="margin-bottom:12px;">
+        <a href="${job.link}"><strong>${index}. ${job.title}</strong></a><br/>
+        ${job.company} &middot; ${job.location}<br/>
+        Geplaatst: ${job.postedAt}${sourceLine}
+      </li>
+    `;
+  });
 
-  const postsHtml = posts
-    .map(
-      (post, index) => `
-        <li style="margin-bottom:12px;">
-          <a href="${post.link}"><strong>${index + 1}. ${post.title}</strong></a><br/>
-          <em>Zoekgebied: ${post.sourceTargets.join(", ")}</em><br/>
-          Context: ${post.snippet}
-        </li>
-      `
-    )
-    .join("");
+  const postsHtmlSection = renderGroupedHtmlSection(
+    "Posts (mensen zoeken/huren)",
+    postsByRecency,
+    (post, index) => `
+      <li style="margin-bottom:12px;">
+        <a href="${post.link}"><strong>${index}. ${post.title}</strong></a><br/>
+        <em>Zoekgebied: ${(post.sourceTargets || []).join(", ")}</em><br/>
+        Context: ${post.snippet}
+      </li>
+    `
+  );
 
   return {
     subject,
@@ -436,21 +731,22 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
       `Zoekopdracht: ${criteriaLine}`,
       `Tijdstip: ${now}`,
       ``,
-      `Vacatures gevonden: ${jobsCount}`,
-      `Posts gevonden: ${postsCount}`,
+      `Vacatures totaal (vandaag + 10 dagen + onbekend): ${jobsCount}`,
+      `Posts totaal (vandaag + 10 dagen + onbekend): ${postsCount}`,
       ``,
-      jobsCount > 0 ? `=== Vacatures ===\n${jobsText}` : `=== Vacatures ===\nGeen vacatures gevonden.`,
+      jobsTextSection,
       ``,
-      postsCount > 0 ? `=== Posts (mensen zoeken/huren) ===\n${postsText}` : `=== Posts (mensen zoeken/huren) ===\nGeen relevante posts gevonden.`,
+      postsTextSection,
     ].join("\n"),
     html: `
       <p><strong>Dagelijkse LinkedIn check</strong></p>
       <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-      <p>Vacatures gevonden: <strong>${jobsCount}</strong><br/>Posts gevonden: <strong>${postsCount}</strong></p>
-      <h3>Vacatures</h3>
-      ${jobsCount > 0 ? `<ol>${jobsHtml}</ol>` : `<p>Geen vacatures gevonden.</p>`}
-      <h3>Posts (mensen zoeken/huren)</h3>
-      ${postsCount > 0 ? `<ol>${postsHtml}</ol>` : `<p>Geen relevante posts gevonden.</p>`}
+      <p>
+        Vacatures totaal (vandaag + 10 dagen + onbekend): <strong>${jobsCount}</strong><br/>
+        Posts totaal (vandaag + 10 dagen + onbekend): <strong>${postsCount}</strong>
+      </p>
+      ${jobsHtmlSection}
+      ${postsHtmlSection}
     `,
   };
 }

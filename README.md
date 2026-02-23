@@ -3,8 +3,16 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 ## Dagelijkse LinkedIn vacatures per e-mail
 
 Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures voor **"Appointment Setter"** ophaalt en mailt naar **suuz@studiobenedek.nl** en **tvanzolingen@gmail.com**.
-Standaard zoekt het script in **United States**, **Netherlands** en **Belgium**.
+Standaard zoekt het script in **Netherlands**, **Belgium** en **United States**.
 Daarnaast zoekt het script ook in LinkedIn-posts op signalen zoals **"looking for"**, **"hiring"**, **"op zoek naar"** en **"ik zoek"** met je zoekterm.
+Resultaten worden in de mail opgesplitst op:
+- **Vandaag**
+- **Tot 10 dagen geleden**
+- **Onbekende datum** (vooral bij posts wanneer geen betrouwbare datum in snippet staat)
+
+Sortering in de mail:
+- Eerst **Nederlandse** bijdrages, dan **Belgische**, dan **Amerikaanse**
+- Binnen die volgorde eerst titels met **Appointment Setter**, daarna soortgelijke titels
 
 ### Hoe het werkt
 
@@ -26,9 +34,9 @@ Voeg in je GitHub repository de volgende **Secrets** toe:
 
 Optionele **Variables**:
 
-- `LINKEDIN_LOCATIONS` (komma-gescheiden; default: `United States,Netherlands,Belgium`)
+- `LINKEDIN_LOCATIONS` (komma-gescheiden; default: `Netherlands,Belgium,United States`)
 - `LINKEDIN_LOCATION` (legacy single-location fallback)
-- `LINKEDIN_TIME_RANGE` (default script: `r86400`, laatste 24 uur)
+- `LINKEDIN_TIME_RANGE` (default script: `r864000`, laatste 10 dagen)
 - `LINKEDIN_MAX_PAGES` (default script: `4`)
 - `LINKEDIN_POSTS_ENABLED` (default: `true`)
 - `LINKEDIN_POSTS_MAX_RESULTS` (default: `20`)
