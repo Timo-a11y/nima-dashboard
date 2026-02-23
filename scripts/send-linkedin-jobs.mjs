@@ -263,6 +263,10 @@ function buildDuckDuckGoSearchUrl(query) {
   return `https://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
 }
 
+function buildBraveSearchUrl(query) {
+  return `https://search.brave.com/search?q=${encodeURIComponent(query)}&source=web`;
+}
+
 function unwrapDuckDuckGoRedirect(rawHref) {
   if (!rawHref) return "";
   const href = rawHref.startsWith("//") ? `https:${rawHref}` : rawHref;
@@ -300,6 +304,25 @@ function formatDateTimeForDisplay(date) {
   });
 }
 
+function buildPostItem({ title, snippet, href, keyword }) {
+  const link = normalizeLinkedInUrl(href || "");
+  if (!link || !/linkedin\.com\/(posts\/|feed\/update\/)/i.test(link)) {
+    return null;
+  }
+
+  const postedDate = parseActivityDateFromLinkedInUrl(link);
+  return {
+    title: title || "LinkedIn post",
+    snippet: snippet || "",
+    link,
+    postedAt: postedDate ? formatDateTimeForDisplay(postedDate) : "Unknown date",
+    postedAtDatetime: postedDate ? postedDate.toISOString() : "",
+    location: "Nederland",
+    matchedKeywords: [keyword],
+    sourceType: "post",
+  };
+}
+
 function extractPostsFromDuckDuckGoHtml(html, keyword) {
   const $ = cheerio.load(html);
   const posts = [];
@@ -311,22 +334,27 @@ function extractPostsFromDuckDuckGoHtml(html, keyword) {
     const title = titleRaw.replace(/\s*-\s*LinkedIn\s*$/i, "").trim();
     const snippet = card.find(".result__snippet").text().trim();
     const href = unwrapDuckDuckGoRedirect(element.attr("href") || "");
+    const post = buildPostItem({ title, snippet, href, keyword });
+    if (post) posts.push(post);
+  });
 
-    if (!href || !/linkedin\.com\/posts\//i.test(href)) {
-      return;
-    }
+  return posts;
+}
 
-    const postedDate = parseActivityDateFromLinkedInUrl(href);
-    posts.push({
-      title: title || "LinkedIn post",
-      snippet,
-      link: href,
-      postedAt: postedDate ? formatDateTimeForDisplay(postedDate) : "Unknown date",
-      postedAtDatetime: postedDate ? postedDate.toISOString() : "",
-      location: "Nederland",
-      matchedKeywords: [keyword],
-      sourceType: "post",
-    });
+function extractPostsFromBraveHtml(html, keyword) {
+  const $ = cheerio.load(html);
+  const posts = [];
+
+  $('a[href*="linkedin.com/posts/"], a[href*="linkedin.com/feed/update/"]').each((_, anchor) => {
+    const element = $(anchor);
+    const href = (element.attr("href") || "").trim();
+    if (!href.startsWith("http")) return;
+
+    const rawText = element.text().replace(/\s+/g, " ").trim();
+    const title = rawText.length > 0 ? rawText : "LinkedIn post";
+    const snippet = rawText;
+    const post = buildPostItem({ title, snippet, href, keyword });
+    if (post) posts.push(post);
   });
 
   return posts;
@@ -380,10 +408,19 @@ function isLikelyDutchPost(post) {
 
 function matchesPostIntent(post, keyword, phrase) {
   const normalizedText = normalizeForLocationMatch(`${post.title || ""} ${post.snippet || ""}`);
-  const normalizedKeyword = normalizeForLocationMatch(keyword);
+  const keywordTokens = normalizeForLocationMatch(keyword)
+    .split(" ")
+    .filter((token) => token.length >= 3);
   const normalizedPhrase = normalizeForLocationMatch(phrase);
 
-  if (!normalizedText.includes(normalizedKeyword)) return false;
+  if (keywordTokens.length === 0) {
+    return false;
+  }
+
+  const matchedTokenCount = keywordTokens.filter((token) => normalizedText.includes(token)).length;
+  const requiredTokenCount = keywordTokens.length === 1 ? 1 : Math.max(2, Math.ceil(keywordTokens.length * 0.6));
+  if (matchedTokenCount < requiredTokenCount) return false;
+
   if (!normalizedPhrase) return true;
   return normalizedText.includes(normalizedPhrase);
 }
@@ -401,29 +438,51 @@ async function scrapeLinkedInPosts({ keywords, location, searchPhrase, maxPostsP
   const allPosts = [];
 
   for (const keyword of keywords) {
-    const query = `site:linkedin.com/posts "${searchPhrase}" "${keyword}" ${location}`.trim();
-    const url = buildDuckDuckGoSearchUrl(query);
-    console.log(`[posts] Searching posts for keyword "${keyword}" using: ${url}`);
+    const queryVariants = [
+      `site:linkedin.com/posts "${searchPhrase}" "${keyword}" ${location}`.trim(),
+      `site:linkedin.com/posts "${searchPhrase}" ${keyword} ${location}`.trim(),
+    ];
+    const keywordPosts = [];
 
-    try {
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        console.warn(`[posts] DuckDuckGo request failed (${response.status}) for keyword "${keyword}".`);
-        continue;
+    for (const query of queryVariants) {
+      if (keywordPosts.length >= maxPostsPerKeyword) {
+        break;
       }
 
-      const html = await response.text();
-      const extracted = extractPostsFromDuckDuckGoHtml(html, keyword);
-      const filtered = extracted.filter((post) => isLikelyDutchPost(post) && matchesPostIntent(post, keyword, searchPhrase));
-      const limited = filtered.slice(0, maxPostsPerKeyword);
+      const duckDuckGoUrl = buildDuckDuckGoSearchUrl(query);
+      console.log(`[posts] Searching (DDG) for keyword "${keyword}" using: ${duckDuckGoUrl}`);
 
-      allPosts.push(...limited);
-      console.log(`[posts] Keyword "${keyword}" yielded ${limited.length}/${filtered.length} relevant posts.`);
-    } catch (error) {
-      console.warn(`[posts] Failed to scrape posts for keyword "${keyword}": ${error instanceof Error ? error.message : String(error)}`);
+      try {
+        const response = await fetch(duckDuckGoUrl, { headers });
+        const html = await response.text();
+        const extracted = extractPostsFromDuckDuckGoHtml(html, keyword);
+
+        let fromBrave = [];
+        if (response.status === 202 || extracted.length === 0) {
+          const braveUrl = buildBraveSearchUrl(query);
+          console.log(`[posts] Falling back to Brave for keyword "${keyword}" using: ${braveUrl}`);
+          const braveResponse = await fetch(braveUrl, { headers });
+          if (braveResponse.ok) {
+            const braveHtml = await braveResponse.text();
+            fromBrave = extractPostsFromBraveHtml(braveHtml, keyword);
+          }
+        }
+
+        const combined = mergePostsByLink([...extracted, ...fromBrave]);
+        const filtered = combined.filter((post) => isLikelyDutchPost(post) && matchesPostIntent(post, keyword, searchPhrase));
+        keywordPosts.push(...filtered);
+      } catch (error) {
+        console.warn(
+          `[posts] Failed query for keyword "${keyword}": ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+
+      await sleep(POST_REQUEST_DELAY_MS);
     }
 
-    await sleep(POST_REQUEST_DELAY_MS);
+    const dedupedKeywordPosts = mergePostsByLink(keywordPosts).slice(0, maxPostsPerKeyword);
+    allPosts.push(...dedupedKeywordPosts);
+    console.log(`[posts] Keyword "${keyword}" yielded ${dedupedKeywordPosts.length} relevant posts after filtering.`);
   }
 
   return mergePostsByLink(allPosts);
