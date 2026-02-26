@@ -14,6 +14,7 @@ Als er geen recente posts gevonden worden, voegt de flow automatisch oudere rele
 Sortering in de mail:
 - Eerst **Nederlandse** bijdrages, dan **Belgische**, dan **Amerikaanse**
 - Binnen die volgorde eerst titels met **Appointment Setter**, daarna soortgelijke titels
+- Irrelevante rollen (zoals technische tekenaar/CAD/engineer) worden actief uitgefilterd
 
 ### Hoe het werkt
 

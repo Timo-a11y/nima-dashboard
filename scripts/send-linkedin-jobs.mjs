@@ -25,6 +25,45 @@ const SIMILAR_TITLE_PATTERNS = [
   "telemarketer",
 ];
 
+const APPOINTMENT_LEAD_INCLUDE_TERMS = [
+  "appointment setter",
+  "appointment setting",
+  "appointmentsetter",
+  "afspraakmaker",
+  "afsprakenmaker",
+  "afspraak inplanner",
+  "afspraken inplanner",
+  "lead generator",
+  "lead generation",
+  "business development representative",
+  "sales development representative",
+  "cold caller",
+  "acquisiteur",
+  "telemarketer",
+  "inside sales",
+];
+
+const APPOINTMENT_LEAD_INCLUDE_REGEXES = [/\bsdr\b/i, /\bbdr\b/i];
+
+const IRRELEVANT_ROLE_EXCLUDE_TERMS = [
+  "technisch tekenaar",
+  "tekenaar",
+  "drafter",
+  "cad",
+  "autocad",
+  "mechanical engineer",
+  "electrical engineer",
+  "software engineer",
+  "software developer",
+  "developer",
+  "architect",
+  "civil engineer",
+  "project engineer",
+  "werkvoorbereider",
+  "constructeur",
+  "machine operator",
+];
+
 const REGION_PRIORITY = new Map([
   ["netherlands", 0],
   ["nederland", 0],
@@ -248,6 +287,39 @@ function getTitlePriority(title, keywords) {
   }
 
   return 4;
+}
+
+function matchesAnyTerm(text, terms) {
+  return terms.some((term) => text.includes(term));
+}
+
+function matchesAnyRegex(text, regexes) {
+  return regexes.some((regex) => regex.test(text));
+}
+
+function isAppointmentSetterSearch(keywords) {
+  const lowered = keywords.toLowerCase();
+  return (
+    lowered.includes("appointment setter") ||
+    lowered.includes("appointment setting") ||
+    lowered.includes("appointmentsetter")
+  );
+}
+
+function isRelevantLeadItem({ title, snippet = "", keywords }) {
+  const text = `${title} ${snippet}`.toLowerCase();
+
+  const includeMatch = isAppointmentSetterSearch(keywords)
+    ? matchesAnyTerm(text, APPOINTMENT_LEAD_INCLUDE_TERMS) ||
+      matchesAnyRegex(text, APPOINTMENT_LEAD_INCLUDE_REGEXES)
+    : text.includes(keywords.toLowerCase());
+
+  if (!includeMatch) {
+    return false;
+  }
+
+  const excludeMatch = matchesAnyTerm(text, IRRELEVANT_ROLE_EXCLUDE_TERMS);
+  return !excludeMatch;
 }
 
 function sortByPriority(items, { keywords, getSourceLabels, getDateInput, includeOlder = false }) {
@@ -617,15 +689,28 @@ async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPag
       }
 
       const jobs = extractJobsFromHtml(html, searchLocation);
+      const relevantJobs = jobs.filter((job) =>
+        isRelevantLeadItem({
+          title: job.title,
+          snippet: `${job.company} ${job.location}`,
+          keywords,
+        })
+      );
+      const filteredOutCount = jobs.length - relevantJobs.length;
       console.log(
         `[linkedin] Location "${searchLocation}" page ${page + 1} returned ${jobs.length} jobs.`
       );
+      if (filteredOutCount > 0) {
+        console.log(
+          `[linkedin] Filtered out ${filteredOutCount} non-relevant jobs on page ${page + 1} for "${searchLocation}".`
+        );
+      }
 
       if (jobs.length === 0) {
         break;
       }
 
-      allJobs.push(...jobs);
+      allJobs.push(...relevantJobs);
       await sleep(REQUEST_DELAY_MS);
     }
 
@@ -743,12 +828,19 @@ async function scrapeLinkedInPosts({ keywords, searchLocations, maxResults }) {
 
           const html = await response.text();
           const posts = extractPostsFromSearchHtml(html, searchTarget.label);
-          console.log(
-            `[posts] ${provider.name} "${searchTarget.label}" (offset ${offset}) returned ${posts.length} post candidates.`
+          const relevantPosts = posts.filter((post) =>
+            isRelevantLeadItem({
+              title: post.title,
+              snippet: post.snippet,
+              keywords,
+            })
           );
-          allPosts.push(...posts);
+          console.log(
+            `[posts] ${provider.name} "${searchTarget.label}" (offset ${offset}) returned ${posts.length} post candidates (${relevantPosts.length} relevant).`
+          );
+          allPosts.push(...relevantPosts);
 
-          if (posts.length > 0) {
+          if (relevantPosts.length > 0) {
             providerReturnedResults = true;
             break;
           }
