@@ -15,6 +15,7 @@ Sortering in de mail:
 - Eerst **Nederlandse** bijdrages, dan **Belgische**, dan **Amerikaanse**
 - Binnen die volgorde eerst titels met **Appointment Setter**, daarna soortgelijke titels
 - Irrelevante rollen (zoals technische tekenaar/CAD/engineer) worden actief uitgefilterd
+- Vacatures én posts blijven zichtbaar; voor vacatures is de filter iets ruimer zodat relevante sales/setting varianten behouden blijven
 
 ### Hoe het werkt
 

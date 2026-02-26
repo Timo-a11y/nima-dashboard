@@ -41,6 +41,16 @@ const APPOINTMENT_LEAD_INCLUDE_TERMS = [
   "acquisiteur",
   "telemarketer",
   "inside sales",
+  "appointment specialist",
+  "appointment scheduler",
+  "appointment coordinator",
+  "sales representative",
+  "sales rep",
+  "business developer",
+  "outbound sales",
+  "sales executive",
+  "call center agent",
+  "contact center agent",
 ];
 
 const APPOINTMENT_LEAD_INCLUDE_REGEXES = [/\bsdr\b/i, /\bbdr\b/i];
@@ -62,6 +72,18 @@ const IRRELEVANT_ROLE_EXCLUDE_TERMS = [
   "werkvoorbereider",
   "constructeur",
   "machine operator",
+];
+
+const POST_INTENT_SIGNAL_TERMS = [
+  "hiring",
+  "looking for",
+  "we are hiring",
+  "op zoek naar",
+  "ik zoek",
+  "vacature",
+  "vacancy",
+  "recruiting",
+  "gezocht",
 ];
 
 const REGION_PRIORITY = new Map([
@@ -297,6 +319,23 @@ function matchesAnyRegex(text, regexes) {
   return regexes.some((regex) => regex.test(text));
 }
 
+function extractKeywordTokens(keywords) {
+  return keywords
+    .toLowerCase()
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3);
+}
+
+function hasKeywordTokenMatch(text, keywords) {
+  const tokens = extractKeywordTokens(keywords);
+  if (tokens.length === 0) {
+    return false;
+  }
+
+  return tokens.some((token) => text.includes(token));
+}
+
 function isAppointmentSetterSearch(keywords) {
   const lowered = keywords.toLowerCase();
   return (
@@ -306,15 +345,37 @@ function isAppointmentSetterSearch(keywords) {
   );
 }
 
-function isRelevantLeadItem({ title, snippet = "", keywords }) {
+function isRelevantJobItem({ title, snippet = "", keywords }) {
+  const text = `${title} ${snippet}`.toLowerCase();
+
+  const includeMatch =
+    matchesAnyTerm(text, APPOINTMENT_LEAD_INCLUDE_TERMS) ||
+    matchesAnyRegex(text, APPOINTMENT_LEAD_INCLUDE_REGEXES) ||
+    hasKeywordTokenMatch(text, keywords);
+
+  if (!includeMatch) {
+    return false;
+  }
+
+  const excludeMatch = matchesAnyTerm(text, IRRELEVANT_ROLE_EXCLUDE_TERMS);
+  return !excludeMatch;
+}
+
+function isRelevantPostItem({ title, snippet = "", keywords }) {
   const text = `${title} ${snippet}`.toLowerCase();
 
   const includeMatch = isAppointmentSetterSearch(keywords)
     ? matchesAnyTerm(text, APPOINTMENT_LEAD_INCLUDE_TERMS) ||
-      matchesAnyRegex(text, APPOINTMENT_LEAD_INCLUDE_REGEXES)
+      matchesAnyRegex(text, APPOINTMENT_LEAD_INCLUDE_REGEXES) ||
+      hasKeywordTokenMatch(text, keywords)
     : text.includes(keywords.toLowerCase());
 
   if (!includeMatch) {
+    return false;
+  }
+
+  const hasIntentSignal = matchesAnyTerm(text, POST_INTENT_SIGNAL_TERMS);
+  if (!hasIntentSignal) {
     return false;
   }
 
@@ -690,7 +751,7 @@ async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPag
 
       const jobs = extractJobsFromHtml(html, searchLocation);
       const relevantJobs = jobs.filter((job) =>
-        isRelevantLeadItem({
+        isRelevantJobItem({
           title: job.title,
           snippet: `${job.company} ${job.location}`,
           keywords,
@@ -829,7 +890,7 @@ async function scrapeLinkedInPosts({ keywords, searchLocations, maxResults }) {
           const html = await response.text();
           const posts = extractPostsFromSearchHtml(html, searchTarget.label);
           const relevantPosts = posts.filter((post) =>
-            isRelevantLeadItem({
+            isRelevantPostItem({
               title: post.title,
               snippet: post.snippet,
               keywords,
