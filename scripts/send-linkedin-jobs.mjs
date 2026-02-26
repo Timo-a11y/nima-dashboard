@@ -250,7 +250,7 @@ function getTitlePriority(title, keywords) {
   return 4;
 }
 
-function sortByPriority(items, { keywords, getSourceLabels, getDateInput }) {
+function sortByPriority(items, { keywords, getSourceLabels, getDateInput, includeOlder = false }) {
   const enriched = items
     .map((item) => {
       const parsedDate = parseFlexibleDate(getDateInput(item));
@@ -266,7 +266,7 @@ function sortByPriority(items, { keywords, getSourceLabels, getDateInput }) {
         titlePriority,
       };
     })
-    .filter((item) => item.recencyBucket !== "older");
+    .filter((item) => includeOlder || item.recencyBucket !== "older");
 
   return enriched.sort((a, b) => {
     const bucketPriority = {
@@ -766,11 +766,21 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
     getSourceLabels: (job) => job.sourceSearchLocations || [],
     getDateInput: (job) => job.postedAt || "",
   });
-  const sortedPosts = sortByPriority(posts, {
+  const sortedPostsInWindow = sortByPriority(posts, {
     keywords,
     getSourceLabels: (post) => post.sourceTargets || [],
     getDateInput: (post) => `${post.snippet || ""} ${post.title || ""}`,
   });
+
+  const postsFallbackUsed = sortedPostsInWindow.length === 0 && posts.length > 0;
+  const sortedPosts = postsFallbackUsed
+    ? sortByPriority(posts, {
+        keywords,
+        getSourceLabels: (post) => post.sourceTargets || [],
+        getDateInput: (post) => `${post.snippet || ""} ${post.title || ""}`,
+        includeOlder: true,
+      })
+    : sortedPostsInWindow;
 
   const jobsByRecency = splitByRecency(sortedJobs);
   const postsByRecency = splitByRecency(sortedPosts);
@@ -850,6 +860,9 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
       ``,
       `Vacatures totaal (Nieuw + Eerder deze week): ${jobsCount}`,
       `Posts totaal (Nieuw + Eerder deze week): ${postsCount}`,
+      postsFallbackUsed
+        ? `Let op: er zijn geen recente posts (Nieuw/Eerder deze week) gevonden; daarom tonen we oudere relevante posts als fallback.`
+        : "",
       ``,
       jobsTextSection,
       ``,
@@ -862,6 +875,11 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
         Vacatures totaal (Nieuw + Eerder deze week): <strong>${jobsCount}</strong><br/>
         Posts totaal (Nieuw + Eerder deze week): <strong>${postsCount}</strong>
       </p>
+      ${
+        postsFallbackUsed
+          ? `<p><em>Let op: er zijn geen recente posts (Nieuw/Eerder deze week) gevonden; daarom tonen we oudere relevante posts als fallback.</em></p>`
+          : ""
+      }
       ${jobsHtmlSection}
       ${postsHtmlSection}
     `,

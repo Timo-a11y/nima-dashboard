@@ -9,6 +9,8 @@ Resultaten worden in de mail opgesplitst op:
 - **Nieuw** (vandaag)
 - **Eerder deze week** (in de afgelopen 10 dagen en items met onbekende datum)
 
+Als er geen recente posts gevonden worden, voegt de flow automatisch oudere relevante posts toe als fallback (met duidelijke melding in de mail).
+
 Sortering in de mail:
 - Eerst **Nederlandse** bijdrages, dan **Belgische**, dan **Amerikaanse**
 - Binnen die volgorde eerst titels met **Appointment Setter**, daarna soortgelijke titels
