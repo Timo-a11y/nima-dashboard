@@ -301,8 +301,7 @@ function sortByPriority(items, { keywords, getSourceLabels, getDateInput }) {
 function splitByRecency(items) {
   const groups = {
     today: [],
-    last10days: [],
-    unknown: [],
+    earlierWeek: [],
   };
 
   for (const item of items) {
@@ -310,13 +309,7 @@ function splitByRecency(items) {
       groups.today.push(item);
       continue;
     }
-
-    if (item.recencyBucket === "last10days") {
-      groups.last10days.push(item);
-      continue;
-    }
-
-    groups.unknown.push(item);
+    groups.earlierWeek.push(item);
   }
 
   return groups;
@@ -741,9 +734,8 @@ function renderGroupedTextSection(title, groupedItems, renderItem) {
     });
   };
 
-  appendGroup("Vandaag", groupedItems.today);
-  appendGroup("Tot 10 dagen geleden", groupedItems.last10days);
-  appendGroup("Onbekende datum", groupedItems.unknown);
+  appendGroup("Nieuw", groupedItems.today);
+  appendGroup("Eerder deze week", groupedItems.earlierWeek);
   return lines.join("\n").trim();
 }
 
@@ -759,9 +751,8 @@ function renderGroupedHtmlSection(title, groupedItems, renderItem) {
 
   return `
     <h3>${title}</h3>
-    ${renderGroup("Vandaag", groupedItems.today)}
-    ${renderGroup("Tot 10 dagen geleden", groupedItems.last10days)}
-    ${renderGroup("Onbekende datum", groupedItems.unknown)}
+    ${renderGroup("Nieuw", groupedItems.today)}
+    ${renderGroup("Eerder deze week", groupedItems.earlierWeek)}
   `;
 }
 
@@ -787,7 +778,7 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
   const jobsCount = sortedJobs.length;
   const postsCount = sortedPosts.length;
 
-  const subject = `[LinkedIn Leads] Vandaag: ${jobsByRecency.today.length} vacatures / ${postsByRecency.today.length} posts · 10d: ${jobsByRecency.last10days.length} vacatures / ${postsByRecency.last10days.length} posts`;
+  const subject = `[LinkedIn Leads] Nieuw: ${jobsByRecency.today.length} vacatures / ${postsByRecency.today.length} posts · Eerder deze week: ${jobsByRecency.earlierWeek.length} vacatures / ${postsByRecency.earlierWeek.length} posts`;
 
   if (jobsCount === 0 && postsCount === 0) {
     return {
@@ -798,12 +789,12 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
         `Zoekopdracht: ${criteriaLine}`,
         `Tijdstip: ${now}`,
         ``,
-        `Geen vacatures of posts gevonden voor vandaag en de laatste 10 dagen.`,
+        `Geen vacatures of posts gevonden voor Nieuw of Eerder deze week.`,
       ].join("\n"),
       html: `
         <p><strong>Dagelijkse LinkedIn check</strong></p>
         <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
-        <p>Geen vacatures of posts gevonden voor vandaag en de laatste 10 dagen.</p>
+        <p>Geen vacatures of posts gevonden voor Nieuw of Eerder deze week.</p>
       `,
     };
   }
@@ -857,8 +848,8 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
       `Zoekopdracht: ${criteriaLine}`,
       `Tijdstip: ${now}`,
       ``,
-      `Vacatures totaal (vandaag + 10 dagen + onbekend): ${jobsCount}`,
-      `Posts totaal (vandaag + 10 dagen + onbekend): ${postsCount}`,
+      `Vacatures totaal (Nieuw + Eerder deze week): ${jobsCount}`,
+      `Posts totaal (Nieuw + Eerder deze week): ${postsCount}`,
       ``,
       jobsTextSection,
       ``,
@@ -868,8 +859,8 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
       <p><strong>Dagelijkse LinkedIn check</strong></p>
       <p>Zoekopdracht: <strong>${criteriaLine}</strong><br/>Tijdstip: ${now}</p>
       <p>
-        Vacatures totaal (vandaag + 10 dagen + onbekend): <strong>${jobsCount}</strong><br/>
-        Posts totaal (vandaag + 10 dagen + onbekend): <strong>${postsCount}</strong>
+        Vacatures totaal (Nieuw + Eerder deze week): <strong>${jobsCount}</strong><br/>
+        Posts totaal (Nieuw + Eerder deze week): <strong>${postsCount}</strong>
       </p>
       ${jobsHtmlSection}
       ${postsHtmlSection}

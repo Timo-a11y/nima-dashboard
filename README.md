@@ -6,9 +6,8 @@ Deze repository bevat nu een automatische flow die dagelijks LinkedIn-vacatures 
 Standaard zoekt het script in **Netherlands**, **Belgium** en **United States**.
 Daarnaast zoekt het script ook in LinkedIn-posts op signalen zoals **"looking for"**, **"hiring"**, **"op zoek naar"** en **"ik zoek"** met je zoekterm.
 Resultaten worden in de mail opgesplitst op:
-- **Vandaag**
-- **Tot 10 dagen geleden**
-- **Onbekende datum** (vooral bij posts wanneer geen betrouwbare datum in snippet staat)
+- **Nieuw** (vandaag)
+- **Eerder deze week** (in de afgelopen 10 dagen en items met onbekende datum)
 
 Sortering in de mail:
 - Eerst **Nederlandse** bijdrages, dan **Belgische**, dan **Amerikaanse**
