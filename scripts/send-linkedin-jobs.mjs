@@ -6,11 +6,13 @@ const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
 const DEFAULT_TIME_RANGE = "r864000"; // Last 10 days on LinkedIn.
 const DEFAULT_SEARCH_LOCATIONS = ["Netherlands", "Belgium", "United States"];
 const DEFAULT_POSTS_ENABLED = true;
-const DEFAULT_POSTS_MAX_RESULTS = 20;
+const DEFAULT_POSTS_MAX_RESULTS = 40;
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
 const POST_SEARCH_DELAY_MS = 900;
-const POST_SEARCH_HINT = '"looking for" OR hiring OR "op zoek naar" OR "ik zoek"';
+const POST_PAGE_OFFSETS = [0, 30];
+const POST_INTENT_QUERY_HINT =
+  '"hiring" OR "looking for" OR "we are hiring" OR "op zoek naar" OR "ik zoek" OR vacature OR vacancy OR recruiting OR gezocht';
 const SIMILAR_TITLE_PATTERNS = [
   "sales development representative",
   "sdr",
@@ -320,19 +322,58 @@ function splitByRecency(items) {
   return groups;
 }
 
+function buildKeywordVariants(keywords) {
+  const base = keywords.trim();
+  const lowered = base.toLowerCase();
+  const variants = new Set([base]);
+
+  if (!lowered.endsWith("s")) {
+    variants.add(`${base}s`);
+  }
+
+  if (lowered === "appointment setter") {
+    variants.add("appointment setting");
+    variants.add("appointment setters");
+    variants.add("appointment-setting");
+  }
+
+  return [...variants];
+}
+
 function buildPostSearchTargets({ keywords, searchLocations }) {
-  const targets = [
-    {
-      label: "Global",
-      query: `site:linkedin.com/posts "${keywords}" (${POST_SEARCH_HINT})`,
-    },
+  const keywordVariants = buildKeywordVariants(keywords);
+  const locationTargets = [
+    { label: "Global", locationTerm: "" },
+    ...searchLocations.map((location) => ({
+      label: location,
+      locationTerm: `"${location}"`,
+    })),
   ];
 
-  for (const location of searchLocations) {
-    targets.push({
-      label: location,
-      query: `site:linkedin.com/posts "${keywords}" "${location}" (${POST_SEARCH_HINT})`,
-    });
+  const targets = [];
+  const seenQueries = new Set();
+
+  for (const locationTarget of locationTargets) {
+    for (const keywordVariant of keywordVariants) {
+      const queryCandidates = [
+        `site:linkedin.com "${keywordVariant}" ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
+        `site:linkedin.com/posts "${keywordVariant}" ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
+        `site:linkedin.com/feed/update "${keywordVariant}" ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
+      ];
+
+      for (const queryCandidate of queryCandidates) {
+        const normalizedQuery = queryCandidate.replace(/\s+/g, " ").trim();
+        if (seenQueries.has(normalizedQuery)) {
+          continue;
+        }
+
+        seenQueries.add(normalizedQuery);
+        targets.push({
+          label: locationTarget.label,
+          query: normalizedQuery,
+        });
+      }
+    }
   }
 
   return targets;
@@ -370,7 +411,9 @@ function isLikelyLinkedInPostUrl(input) {
       return false;
     }
 
-    return parsed.pathname.includes("/posts/") || parsed.pathname.includes("/feed/update/");
+    const hasPostPath = /\/posts\/[^/?#]+/i.test(parsed.pathname);
+    const hasFeedUpdatePath = /\/feed\/update\/[^/?#]+/i.test(parsed.pathname);
+    return hasPostPath || hasFeedUpdatePath;
   } catch {
     return false;
   }
@@ -533,7 +576,10 @@ function extractPostsFromSearchHtml(html, sourceLabel) {
     const title = anchor.text().trim();
     const href = anchor.attr("href") || "";
     const link = normalizeSearchResultUrl(href);
-    const snippet = element.find(".result__snippet").text().trim();
+    const snippet =
+      element.find(".result__snippet").first().text().trim() ||
+      element.find(".result-snippet").first().text().trim() ||
+      element.find(".result__body").text().trim();
 
     if (!title || !link || !isLikelyLinkedInPostUrl(link)) {
       return;
@@ -562,38 +608,56 @@ async function scrapeLinkedInPosts({ keywords, searchLocations, maxResults }) {
 
   const searchTargets = buildPostSearchTargets({ keywords, searchLocations });
   const allPosts = [];
+  let stopSearch = false;
 
   for (const searchTarget of searchTargets) {
-    const params = new URLSearchParams({
-      q: searchTarget.query,
-    });
-    const url = `https://duckduckgo.com/html/?${params.toString()}`;
-    console.log(`[posts] Searching "${searchTarget.label}" with query: ${searchTarget.query}`);
-
-    try {
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        console.warn(`[posts] Search failed for "${searchTarget.label}" with status ${response.status}.`);
-        continue;
+    for (const offset of POST_PAGE_OFFSETS) {
+      const params = new URLSearchParams({
+        q: searchTarget.query,
+      });
+      if (offset > 0) {
+        params.set("s", String(offset));
       }
 
-      const html = await response.text();
-      const posts = extractPostsFromSearchHtml(html, searchTarget.label);
-      console.log(`[posts] Query "${searchTarget.label}" returned ${posts.length} post candidates.`);
-      allPosts.push(...posts);
-    } catch (error) {
-      console.warn(
-        `[posts] Query "${searchTarget.label}" failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`
+      const url = `https://duckduckgo.com/html/?${params.toString()}`;
+      console.log(
+        `[posts] Searching "${searchTarget.label}" (offset ${offset}) with query: ${searchTarget.query}`
       );
+
+      try {
+        const response = await fetch(url, { headers });
+        if (!response.ok) {
+          console.warn(
+            `[posts] Search failed for "${searchTarget.label}" (offset ${offset}) with status ${response.status}.`
+          );
+          continue;
+        }
+
+        const html = await response.text();
+        const posts = extractPostsFromSearchHtml(html, searchTarget.label);
+        console.log(
+          `[posts] Query "${searchTarget.label}" (offset ${offset}) returned ${posts.length} post candidates.`
+        );
+        allPosts.push(...posts);
+      } catch (error) {
+        console.warn(
+          `[posts] Query "${searchTarget.label}" (offset ${offset}) failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      }
+
+      if (uniquePosts(allPosts).length >= maxResults) {
+        stopSearch = true;
+        break;
+      }
+
+      await sleep(POST_SEARCH_DELAY_MS);
     }
 
-    if (uniquePosts(allPosts).length >= maxResults) {
+    if (stopSearch) {
       break;
     }
-
-    await sleep(POST_SEARCH_DELAY_MS);
   }
 
   return uniquePosts(allPosts).slice(0, maxResults);
