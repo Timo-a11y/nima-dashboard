@@ -10,9 +10,9 @@ const DEFAULT_POSTS_MAX_RESULTS = 40;
 const PAGE_SIZE = 25;
 const REQUEST_DELAY_MS = 1200;
 const POST_SEARCH_DELAY_MS = 900;
-const POST_PAGE_OFFSETS = [0, 30];
+const POST_PAGE_OFFSETS = [0];
 const POST_INTENT_QUERY_HINT =
-  '"hiring" OR "looking for" OR "we are hiring" OR "op zoek naar" OR "ik zoek" OR vacature OR vacancy OR recruiting OR gezocht';
+  'hiring OR "looking for" OR "op zoek naar" OR "ik zoek" OR vacature OR vacancy';
 const SIMILAR_TITLE_PATTERNS = [
   "sales development representative",
   "sdr",
@@ -325,19 +325,19 @@ function splitByRecency(items) {
 function buildKeywordVariants(keywords) {
   const base = keywords.trim();
   const lowered = base.toLowerCase();
-  const variants = new Set([base]);
-
-  if (!lowered.endsWith("s")) {
-    variants.add(`${base}s`);
-  }
+  const variants = [base];
 
   if (lowered === "appointment setter") {
-    variants.add("appointment setting");
-    variants.add("appointment setters");
-    variants.add("appointment-setting");
+    variants.push("appointment setting");
+    variants.push("appointmentsetter");
+    return variants;
   }
 
-  return [...variants];
+  if (!lowered.endsWith("s")) {
+    variants.push(`${base}s`);
+  }
+
+  return variants;
 }
 
 function buildPostSearchTargets({ keywords, searchLocations }) {
@@ -356,9 +356,8 @@ function buildPostSearchTargets({ keywords, searchLocations }) {
   for (const locationTarget of locationTargets) {
     for (const keywordVariant of keywordVariants) {
       const queryCandidates = [
-        `site:linkedin.com "${keywordVariant}" ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
-        `site:linkedin.com/posts "${keywordVariant}" ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
-        `site:linkedin.com/feed/update "${keywordVariant}" ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
+        `site:linkedin.com/posts ${keywordVariant} ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
+        `site:linkedin.com ${keywordVariant} ${locationTarget.locationTerm} (${POST_INTENT_QUERY_HINT})`,
       ];
 
       for (const queryCandidate of queryCandidates) {
@@ -521,6 +520,20 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPages }) {
   const headers = {
     "User-Agent":
@@ -570,17 +583,8 @@ function extractPostsFromSearchHtml(html, sourceLabel) {
   const $ = cheerio.load(html);
   const posts = [];
 
-  $(".result").each((_, result) => {
-    const element = $(result);
-    const anchor = element.find("a.result__a").first();
-    const title = anchor.text().trim();
-    const href = anchor.attr("href") || "";
+  const pushPost = (title, href, snippet) => {
     const link = normalizeSearchResultUrl(href);
-    const snippet =
-      element.find(".result__snippet").first().text().trim() ||
-      element.find(".result-snippet").first().text().trim() ||
-      element.find(".result__body").text().trim();
-
     if (!title || !link || !isLikelyLinkedInPostUrl(link)) {
       return;
     }
@@ -591,7 +595,39 @@ function extractPostsFromSearchHtml(html, sourceLabel) {
       link,
       sourceTargets: sourceLabel ? [sourceLabel] : [],
     });
+  };
+
+  // Brave Search result structure
+  $("div.snippet[data-type='web']").each((_, result) => {
+    const element = $(result);
+    const anchor = element.find("a[href*='linkedin.com']").first();
+    const title =
+      element.find("div.title").first().text().trim() ||
+      element.find(".search-snippet-title").first().text().trim() ||
+      anchor.text().trim();
+    const href = anchor.attr("href") || "";
+    const snippet =
+      element.find("div.generic-snippet .content").first().text().replace(/\s+/g, " ").trim() ||
+      element.find(".description").first().text().replace(/\s+/g, " ").trim();
+
+    pushPost(title, href, snippet);
   });
+
+  // DuckDuckGo fallback structure
+  if (posts.length === 0) {
+    $(".result").each((_, result) => {
+      const element = $(result);
+      const anchor = element.find("a.result__a").first();
+      const title = anchor.text().trim();
+      const href = anchor.attr("href") || "";
+      const snippet =
+        element.find(".result__snippet").first().text().trim() ||
+        element.find(".result-snippet").first().text().trim() ||
+        element.find(".result__body").text().trim();
+
+      pushPost(title, href, snippet);
+    });
+  }
 
   return posts;
 }
@@ -616,34 +652,60 @@ async function scrapeLinkedInPosts({ keywords, searchLocations, maxResults }) {
         q: searchTarget.query,
       });
       if (offset > 0) {
-        params.set("s", String(offset));
+        params.set("offset", String(offset));
       }
 
-      const url = `https://duckduckgo.com/html/?${params.toString()}`;
+      const braveUrl = `https://search.brave.com/search?${params.toString()}`;
+      const ddgParams = new URLSearchParams({ q: searchTarget.query });
+      if (offset > 0) {
+        ddgParams.set("s", String(offset));
+      }
+      const ddgUrl = `https://duckduckgo.com/html/?${ddgParams.toString()}`;
+
+      const providers = [
+        { name: "brave", url: braveUrl },
+        { name: "duckduckgo", url: ddgUrl },
+      ];
+
       console.log(
         `[posts] Searching "${searchTarget.label}" (offset ${offset}) with query: ${searchTarget.query}`
       );
 
-      try {
-        const response = await fetch(url, { headers });
-        if (!response.ok) {
-          console.warn(
-            `[posts] Search failed for "${searchTarget.label}" (offset ${offset}) with status ${response.status}.`
-          );
-          continue;
-        }
+      let providerReturnedResults = false;
 
-        const html = await response.text();
-        const posts = extractPostsFromSearchHtml(html, searchTarget.label);
+      for (const provider of providers) {
+        try {
+          const response = await fetchWithTimeout(provider.url, { headers }, 12000);
+          if (!response.ok) {
+            console.warn(
+              `[posts] ${provider.name} failed for "${searchTarget.label}" (offset ${offset}) with status ${response.status}.`
+            );
+            continue;
+          }
+
+          const html = await response.text();
+          const posts = extractPostsFromSearchHtml(html, searchTarget.label);
+          console.log(
+            `[posts] ${provider.name} "${searchTarget.label}" (offset ${offset}) returned ${posts.length} post candidates.`
+          );
+          allPosts.push(...posts);
+
+          if (posts.length > 0) {
+            providerReturnedResults = true;
+            break;
+          }
+        } catch (error) {
+          console.warn(
+            `[posts] ${provider.name} failed for "${searchTarget.label}" (offset ${offset}): ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+        }
+      }
+
+      if (!providerReturnedResults) {
         console.log(
-          `[posts] Query "${searchTarget.label}" (offset ${offset}) returned ${posts.length} post candidates.`
-        );
-        allPosts.push(...posts);
-      } catch (error) {
-        console.warn(
-          `[posts] Query "${searchTarget.label}" (offset ${offset}) failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`
+          `[posts] No post candidates found for "${searchTarget.label}" at offset ${offset}.`
         );
       }
 
