@@ -821,6 +821,10 @@ function renderGroupedHtmlSection(title, groupedItems, renderItem) {
   `;
 }
 
+function buildTopPostPreview(posts, limit = 5) {
+  return posts.slice(0, limit);
+}
+
 function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
   const now = new Date().toISOString();
   const criteriaLine =
@@ -849,6 +853,7 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
 
   const jobsByRecency = splitByRecency(sortedJobs);
   const postsByRecency = splitByRecency(sortedPosts);
+  const topPostPreview = buildTopPostPreview(sortedPosts, 5);
 
   const jobsCount = sortedJobs.length;
   const postsCount = sortedPosts.length;
@@ -928,10 +933,12 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
       postsFallbackUsed
         ? `Let op: er zijn geen recente posts (Nieuw/Eerder deze week) gevonden; daarom tonen we oudere relevante posts als fallback.`
         : "",
-      ``,
-      jobsTextSection,
+      topPostPreview.length > 0 ? `Snelle post-links (top ${topPostPreview.length}):` : "",
+      ...topPostPreview.map((post) => `- ${post.title}\n  ${post.link}`),
       ``,
       postsTextSection,
+      ``,
+      jobsTextSection,
     ].join("\n"),
     html: `
       <p><strong>Dagelijkse LinkedIn check</strong></p>
@@ -945,8 +952,18 @@ function buildEmailContent({ jobs, posts, keywords, searchLocations }) {
           ? `<p><em>Let op: er zijn geen recente posts (Nieuw/Eerder deze week) gevonden; daarom tonen we oudere relevante posts als fallback.</em></p>`
           : ""
       }
-      ${jobsHtmlSection}
+      ${
+        topPostPreview.length > 0
+          ? `<h3>Snelle post-links</h3><ul>${topPostPreview
+              .map(
+                (post) =>
+                  `<li><a href="${post.link}"><strong>${post.title}</strong></a></li>`
+              )
+              .join("")}</ul>`
+          : ""
+      }
       ${postsHtmlSection}
+      ${jobsHtmlSection}
     `,
   };
 }
