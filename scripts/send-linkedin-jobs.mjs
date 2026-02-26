@@ -6,9 +6,9 @@ const DEFAULT_RECIPIENTS = "suuz@studiobenedek.nl,tvanzolingen@gmail.com";
 const DEFAULT_TIME_RANGE = "r864000"; // Last 10 days on LinkedIn.
 const DEFAULT_SEARCH_LOCATIONS = ["Netherlands", "Belgium", "United States"];
 const DEFAULT_POSTS_ENABLED = true;
-const DEFAULT_POSTS_MAX_RESULTS = 40;
+const DEFAULT_POSTS_MAX_RESULTS = 20;
 const PAGE_SIZE = 25;
-const REQUEST_DELAY_MS = 1200;
+const REQUEST_DELAY_MS = 1800;
 const POST_SEARCH_DELAY_MS = 900;
 const POST_PAGE_OFFSETS = [0];
 const POST_INTENT_QUERY_HINT =
@@ -527,6 +527,55 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   }
 }
 
+async function fetchTextWithRetries({
+  url,
+  headers,
+  context,
+  timeoutMs = 15000,
+  maxAttempts = 4,
+  baseDelayMs = 2000,
+}) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(url, { headers }, timeoutMs);
+      if (response.ok) {
+        return await response.text();
+      }
+
+      const shouldRetry = response.status === 429 || response.status >= 500;
+      if (!shouldRetry || attempt === maxAttempts) {
+        throw new Error(`${context} failed with status ${response.status}`);
+      }
+
+      const backoffMs = baseDelayMs * 2 ** (attempt - 1);
+      console.warn(
+        `[retry] ${context} returned ${response.status}. Retrying in ${backoffMs}ms (attempt ${attempt}/${maxAttempts}).`
+      );
+      await sleep(backoffMs);
+    } catch (error) {
+      lastError = error;
+      if (attempt === maxAttempts) {
+        break;
+      }
+
+      const backoffMs = baseDelayMs * 2 ** (attempt - 1);
+      console.warn(
+        `[retry] ${context} request error: ${
+          error instanceof Error ? error.message : String(error)
+        }. Retrying in ${backoffMs}ms (attempt ${attempt}/${maxAttempts}).`
+      );
+      await sleep(backoffMs);
+    }
+  }
+
+  throw (
+    lastError ||
+    new Error(`${context} failed after ${maxAttempts} attempts without a specific error.`)
+  );
+}
+
 async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPages }) {
   const headers = {
     "User-Agent":
@@ -541,20 +590,32 @@ async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPag
 
   for (const searchLocation of searchLocations) {
     console.log(`[linkedin] Searching location: ${searchLocation}`);
+    let skipRemainingPagesForLocation = false;
 
     for (let page = 0; page < maxPages; page += 1) {
       const start = page * PAGE_SIZE;
       const url = buildSearchUrl({ keywords, location: searchLocation, start, timeRange });
       console.log(`[linkedin] Fetching page ${page + 1}/${maxPages}: ${url}`);
 
-      const response = await fetch(url, { headers });
-      if (!response.ok) {
-        throw new Error(
-          `LinkedIn request failed with status ${response.status} at page ${page + 1} for location "${searchLocation}"`
+      let html = "";
+      try {
+        html = await fetchTextWithRetries({
+          url,
+          headers,
+          context: `LinkedIn jobs page ${page + 1} for ${searchLocation}`,
+        });
+      } catch (error) {
+        console.warn(
+          `[linkedin] Skipping page ${page + 1} for "${searchLocation}" after retries: ${
+            error instanceof Error ? error.message : String(error)
+          }`
         );
+
+        // If first page of a location fails repeatedly, continue with other locations.
+        skipRemainingPagesForLocation = true;
+        break;
       }
 
-      const html = await response.text();
       const jobs = extractJobsFromHtml(html, searchLocation);
       console.log(
         `[linkedin] Location "${searchLocation}" page ${page + 1} returned ${jobs.length} jobs.`
@@ -566,6 +627,10 @@ async function scrapeLinkedInJobs({ keywords, searchLocations, timeRange, maxPag
 
       allJobs.push(...jobs);
       await sleep(REQUEST_DELAY_MS);
+    }
+
+    if (skipRemainingPagesForLocation) {
+      continue;
     }
   }
 

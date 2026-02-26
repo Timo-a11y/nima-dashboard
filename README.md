@@ -40,7 +40,7 @@ Optionele **Variables**:
 - `LINKEDIN_TIME_RANGE` (default script: `r864000`, laatste 10 dagen)
 - `LINKEDIN_MAX_PAGES` (default script: `4`)
 - `LINKEDIN_POSTS_ENABLED` (default: `true`)
-- `LINKEDIN_POSTS_MAX_RESULTS` (default: `40`)
+- `LINKEDIN_POSTS_MAX_RESULTS` (default: `20`)
 - `EMAIL_FROM` (default: `SMTP_USER`)
 - `EMAIL_TO` (optioneel, meerdere ontvangers met komma's; default: `suuz@studiobenedek.nl,tvanzolingen@gmail.com`)
 
